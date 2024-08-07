@@ -1,0 +1,36 @@
+project:
+  type: book
+
+
+execute:
+  freeze: auto  # re-render only when source changes
+
+
+book:
+  title: "HRM-ML Paper"
+  author: "gaoch"
+  date: now
+  chapters:
+    - index.qmd
+    - data-preprocess.qmd
+    - modeling.qmd
+    - main.qmd
+    - references.qmd
+
+bibliography: references.bib
+
+format:
+  html:
+    theme: cosmo
+    fig-width: 5.5
+    fig-height: 3.5
+  pdf:
+    documentclass: scrreprt
+    fig-width: 5.5
+    fig-height: 3.5
+    include-in-header: 
+          text: |
+            \usepackage{ctex}
+            \usepackage{amsthm,mathrsfs}
+
+
