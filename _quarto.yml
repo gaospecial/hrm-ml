@@ -15,6 +15,7 @@ book:
     - data-preprocess.qmd
     - modeling.qmd
     - main.qmd
+    - evaluation.qmd
     - references.qmd
 
 bibliography: references.bib
@@ -23,11 +24,11 @@ format:
   html:
     theme: cosmo
     fig-width: 5.5
-    fig-height: 3.5
+    fig-asp: 0.618
   pdf:
     documentclass: scrreprt
     fig-width: 5.5
-    fig-height: 3.5
+    fig-asp: 0.618
     include-in-header: 
           text: |
             \usepackage{ctex}

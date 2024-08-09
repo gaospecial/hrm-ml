@@ -1,22 +1,20 @@
 # Story Main
 
 
-This chapter contains the supplementary information of the manuscript entitled "Precise prediction of synthetic community structure with high-resolution melting curve and machine learning" authored by Chun-Hui Gao, Jiaqi He, et. al.
-
 ```{r}
 library(tidyverse)
 library(tidymodels)
 library(mcmodel)
+library(cowplot)
 ```
 
+## Single-species modeling
 
-## Amplication, melting curve and Ct standard curve
+Amplification, melting curve and Ct standard curve of single species PCRs.
 
-With the experiment performed on 12/05/2023, we continue.
+### Data process
 
-### Data
-
-The experiment has five replicates (plates) and we only use one to start the story.
+We use one experiment to start the story.
 
 The experiment of melting curve analysis (and RT-PCR) was performed with a QuantStudio Software supported machine. Therefore, the results file used here is the plain text output of full results of the QuantStudio software (V1.5). In `mcmodel` package, it has the `read_quantstudio()` function to read in the data and transform the full record to a `QuantStudioRaw` class object.
 
@@ -34,9 +32,9 @@ The plate setting used in melting curve analysis is provided in a `csv` file. Or
 plate_file = xfun::magic_path("modeling-plate-labels.csv")
 plate = read_csv(plate_file)
 plate2 = plate |> 
-    drop_na() |> 
-    mutate(label_E = ifelse(label_E == 0, 1, ifelse(label_E == 16, 0, 1/2^label_E)),
-           label_P = ifelse(label_P == 0, 1, ifelse(label_P == 16, 0, 1/2^label_P)))
+  drop_na() |> 
+  mutate(label_E = ifelse(label_E == 0, 1, ifelse(label_E == 16, 0, 1/2^label_E)),
+         label_P = ifelse(label_P == 0, 1, ifelse(label_P == 16, 0, 1/2^label_P)))
 
 ```
 
@@ -58,35 +56,38 @@ strain_single_well = list(EC = ec_single_well, PP = pp_single_well)
 
 # well2position
 well2position = tibble(
-    well = as.character(1:384), 
-    well_position = paste0(rep(LETTERS[1:16],each=24),rep(1:24, times=16)))
+  well = as.character(1:384), 
+  well_position = paste0(rep(LETTERS[1:16],each=24),rep(1:24, times=16)))
 ```
 
 ### Well concentration
 
-A 384-well PCR plate was divided into two parts. 1) the dilution of single species DNA template of *E. coli* ([@fig-well-conc-single-and-matrix]a) and *P. putid* ([@fig-well-conc-single-and-matrix]b), 2) the gradient matrix of two-species DNA mixtures ([@fig-well-conc-single-and-matrix]c).
+A 384-well PCR plate was divided into two parts. 1) the dilution of single species DNA template of *E. coli* ([@fig-well-conc-single-and-matrix]a) and *P. putida* ([@fig-well-conc-single-and-matrix]b), 2) the gradient matrix of two-species DNA mixtures ([@fig-well-conc-single-and-matrix]c).
 
 ```{r}
 #| label: fig-well-conc-single-and-matrix
 #| fig-cap: Settings of a 384-well PCR plate.
 p_concentration = lapply(seq_along(strain_label), function(i){
-    plate2  |> 
-        dplyr::filter(well_position %in% strain_single_well[[i]]) |> 
-        plot_384_single_concentration(strain_label[[i]], well_size = 1.5) + 
-        scale_color_gradient(high = strain_color[[i]], low = "white", trans = "log2", na.value = "grey90") +
-        coord_equal() +
-        theme(legend.position = 'none')
+  plate2  |> 
+    dplyr::filter(well_position %in% strain_single_well[[i]]) |> 
+    plot_384_single_concentration(strain_label[[i]], well_size = 1.5) + 
+    scale_color_gradient(high = strain_color[[i]], 
+                         low = "white",
+                         trans = "log2",
+                         na.value = "grey90") +
+    coord_equal() +
+    theme(legend.position = 'none')
 })
 
 plate3 = plate2 |> 
-    dplyr::filter(well_position %in% gradient_matrix_well)
+  dplyr::filter(well_position %in% gradient_matrix_well)
 p_matrix = plot_384_community_structure(plate3) + 
-    scale_fill_manual(values = c("red3","purple3")) +
-    ggplot2::coord_equal() +
-    theme(legend.position = 'none')
+  scale_fill_manual(values = c("red3","purple3")) +
+  coord_equal() +
+  theme(legend.position = 'none')
 
-cowplot::plot_grid(p_concentration[[1]], p_concentration[[2]], p_matrix, 
-    ncol = 2, labels = 'auto')
+plot_grid(p_concentration[[1]], p_concentration[[2]], p_matrix, 
+          ncol = 2, labels = 'auto')
 ```
 
 ### Amplification plot
@@ -94,28 +95,34 @@ cowplot::plot_grid(p_concentration[[1]], p_concentration[[2]], p_matrix,
 ```{r}
 # plot amplification curve
 qs_amplification = get_quantstudio_amplication(quantstudio_raw) |> 
-    dplyr::left_join(well2position)
+  dplyr::left_join(well2position)
 ```
 
 ```{r}
 #| label: fig-amplification-curve-of-single-species
 #| fig-cap: Amplification curves of singe species DNAs
 p_amp = lapply(seq_along(strain_label), function(i){
-    qs_amplification  |> 
-        dplyr::filter(well_position %in% strain_single_well[[i]]) |> 
-        left_join(plate2) |> 
-        ggplot(aes_string(x = 'cycle', y = 'delta_rn', group = 'well', color = strain_label[[i]])) +
-        geom_line() +
-        geom_hline(yintercept = 0.124, linetype = 'dashed', color = 'grey') +
-        geom_text(x = -Inf, y = 0.124, label = 'Ct threshold', hjust = -.25, vjust = -0.5, color = 'grey') +
-        scale_color_gradient(high=strain_color[[i]], low="white", trans='log2', labels = trans_format("log2", label_number_auto()), breaks = 2^c(0, -5, -10, -15)) +
-        labs(color = expression(log[2]*Q), y = 'fluorescence') +
-        theme(legend.position = "inside",
-              legend.position.inside = c(0.38,0.62),
-              legend.key.size = unit(0.4,'cm'),
-              legend.key.height = unit(.4, 'cm'))
+  df = qs_amplification  |> 
+    dplyr::filter(well_position %in% strain_single_well[[i]]) |> 
+    left_join(plate2)
+  
+  ggplot(df, aes(cycle, delta_rn, group = well)) +
+    geom_line(aes(color = .data[[strain_label[[i]]]])) +
+    geom_hline(yintercept = 0.124, linetype = 'dashed', color = 'grey') +
+    geom_text(x = -Inf, y = 0.124, label = 'Ct threshold', 
+              hjust = -.25, vjust = -0.5, color = 'grey') +
+    scale_color_gradient(
+      high = strain_color[[i]], low = "white", trans = 'log2', 
+      labels = trans_format("log2", label_number_auto()), 
+      breaks = 2^c(0, -5, -10, -15)
+    ) +
+    labs(color = expression(log[2]*Q), y = 'fluorescence') +
+    theme(legend.position = "inside",
+          legend.position.inside = c(0.38,0.62),
+          legend.key.size = unit(0.4,'cm'),
+          legend.key.height = unit(.4, 'cm'))
 })
-cowplot::plot_grid(plotlist = p_amp, labels = "auto")
+plot_grid(plotlist = p_amp, labels = "auto")
 ```
 
 ### Ct model of single species
@@ -123,13 +130,16 @@ cowplot::plot_grid(plotlist = p_amp, labels = "auto")
 ```{r}
 # check ct calling results
 qs_results = get_quantstudio_result(quantstudio_raw) |> 
-    dplyr::select(well_position, ct) |> 
-    dplyr::mutate(ct = as.numeric(ct)) |> 
-    left_join(plate2) |> 
-    pivot_longer(cols = starts_with("label_"), names_to = "strain", values_to = "quantity")  |> 
-    dplyr::filter(quantity != 0, !is.na(ct))
+  dplyr::select(well_position, ct) |> 
+  dplyr::mutate(ct = as.numeric(ct)) |> 
+  left_join(plate2) |> 
+  pivot_longer(cols = starts_with("label_"), 
+               names_to = "strain", 
+               values_to = "quantity")  |> 
+  dplyr::filter(quantity != 0, !is.na(ct))
 
-mono_ct = qs_results  |> dplyr::filter(well_position %in% unlist(strain_single_well))
+mono_ct = qs_results  |> 
+  dplyr::filter(well_position %in% unlist(strain_single_well))
 mono_ct
 ```
 
@@ -137,7 +147,7 @@ mono_ct
 #| label: fig-correlation-ct-and-log2Q
 #| fig-cap: Correlation of Ct values and log2-transformed DNA quantities
 p_ct = lapply(seq_along(strain_label), function(i){
-    qs_results |> 
+  qs_results |> 
     dplyr::filter(well_position %in% strain_single_well[[i]]) |> 
     ggplot(aes(ct, log2(quantity))) +
     geom_smooth(method = 'lm', color = strain_color[[i]]) +
@@ -145,7 +155,7 @@ p_ct = lapply(seq_along(strain_label), function(i){
     labs(y = expression(log[2]*Q), x = 'Ct')
 })
 
-cowplot::plot_grid(plotlist = p_ct)
+plot_grid(plotlist = p_ct)
 ```
 
 ### Melting curve gradient
@@ -153,7 +163,7 @@ cowplot::plot_grid(plotlist = p_ct)
 ```{r}
 mc = quantstudio2mc(quantstudio_raw, plate = plate2, primer = "V4")
 mc = filterData(mc, from = 80, to = 90) |> 
-    transformData(step = 0.1)
+  transformData(step = 0.1)
 ```
 
 
@@ -161,69 +171,94 @@ mc = filterData(mc, from = 80, to = 90) |>
 #| label: fig-melting-curve-of-single-species
 #| fig-cap: Melting curves of single species DNAs
 plot_mc_single = function(mc, label_color, vline_color){
-    # get tm value (median)
+  # get tm value (median)
   tm = mc_get_tm(mc, npeaks = 1) |> pull(peak_position) |> median()
-
+  
   df = mc2tbl(mc) |> 
     select(-date, -primer) |> 
-    summarize(derivative = median(derivative), .by = c("temperature", label_color, "temperature"))
+    summarize(derivative = median(derivative), 
+              .by = c("temperature", label_color, "temperature"))
   
   # plot mc
-  ggplot(df, aes(temperature, derivative, color = .data[[label_color]], group = .data[[label_color]])) + 
+  ggplot(df, 
+         aes(temperature, derivative, 
+             color = .data[[label_color]], 
+             group = .data[[label_color]])) + 
     geom_line() + 
-    geom_vline(aes(xintercept = I(tm)), linetype = 'dashed', color = vline_color) +
-    geom_text(x = tm, y = Inf, hjust = -0.1, vjust = 2, label = paste0("Tm = ", tm, "°C"), color = vline_color)  +
+    geom_vline(aes(xintercept = I(tm)), 
+               linetype = 'dashed', 
+               color = vline_color) +
+    geom_text(x = tm, y = Inf, hjust = -0.1, vjust = 2, 
+              label = paste0("Tm = ", tm, "°C"), 
+              color = vline_color)  +
     scale_x_continuous(breaks = c(80, 85, 90)) +
-    labs(x = "temperature (°C)", y = "fluorescence", color = expression(log[2]*Q))+
+    labs(x = "temperature (°C)", 
+         y = "fluorescence", 
+         color = expression(log[2]*Q)) +
     theme(legend.position = "inside",
-      legend.position.inside = c(0.75,0.5))
+          legend.position.inside = c(0.75,0.5))
 }
 
 p_mc = lapply(seq_along(strain_label), function(i){
-    filterData(mc, well_position = strain_single_well[[i]]) |> 
-        plot_mc_single(strain_label[[i]], strain_color[[i]]) +
-        scale_color_gradient(high=strain_color[[i]], low="white", trans='log2', labels = trans_format("log2", label_number_auto()), breaks = 2^c(0, -5, -10, -15))
+  filterData(mc, well_position = strain_single_well[[i]]) |> 
+    plot_mc_single(strain_label[[i]], strain_color[[i]]) +
+    scale_color_gradient(
+      high = strain_color[[i]], 
+      low = "white", 
+      trans = 'log2', 
+      labels = trans_format("log2", label_number_auto()), 
+      breaks = 2^c(0, -5, -10, -15)
+    ) 
 })
 
-cowplot::plot_grid(plotlist = p_mc, ncol = 3, nrow = 2)
+plot_grid(plotlist = p_mc, ncol = 3, nrow = 2)
 ```
 
 
 
 ### Peak calling
 
+Detect peak and get peak features.
+
 ```{r}
 mono_mc = lapply(seq_along(strain_label), function(i){
-        x = filterData(mc, well_position = strain_single_well[[i]]) |> 
-            transformData(step = 0.1)
-        df = mc2tbl(x) |> 
-            select(-date, -primer) |> 
-            nest(data = c(temperature, derivative)) |> 
-            pivot_longer(cols = starts_with("label_"), names_to = "strain", values_to = "quantity") 
-        peaks = lapply(df$data, 
-                        mcmodel:::detect_tm, 
-                        zero = "+", 
-                        npeaks = 1, 
-                        sortstr = TRUE, 
-                        threshold = 0) |> 
-                bind_rows()
-        bind_cols(df, peaks)
-    }) |> 
-    bind_rows() |> 
-    dplyr::filter(quantity != 0)
+  x = filterData(mc, well_position = strain_single_well[[i]]) |> 
+    transformData(step = 0.1)
+  df = mc2tbl(x) |> 
+    select(-date, -primer) |> 
+    nest(data = c(temperature, derivative)) |> 
+    pivot_longer(cols = starts_with("label_"), 
+                 names_to = "strain", 
+                 values_to = "quantity") 
+  peaks = lapply(df$data, 
+                 mcmodel:::detect_tm, 
+                 zero = "+", 
+                 npeaks = 1, 
+                 sortstr = TRUE, 
+                 threshold = 0) |> 
+    bind_rows()
+  bind_cols(df, peaks)
+}) |> 
+  bind_rows() |> 
+  dplyr::filter(quantity != 0)
 
 mono_mc$peak_area = sapply(1:nrow(mono_mc), function(i){
   d = mono_mc$data[[i]] |> 
-    filter(temperature >= mono_mc$peak_start[[i]], temperature <= mono_mc$peak_end[[i]])
+    filter(temperature >= mono_mc$peak_start[[i]], 
+           temperature <= mono_mc$peak_end[[i]])
   pracma::trapz(d$temperature, d$derivative)
 })
 
-peak_cols = paste('peak', c('height','area','start','position','end'), sep = "_")
+peak_cols = paste('peak', 
+                  c('height','area','start','position','end'), 
+                  sep = "_")
 mono_mc = mono_mc |> 
-    dplyr::select(well_position, strain, quantity, matches(peak_cols))
+  dplyr::select(well_position, strain, quantity, matches(peak_cols))
 
 mono_mc
 ```
+
+Correlations of DNA quantity to peak features.
 
 ```{r}
 #| label: fig-correlation-of-log2Q-and-peak-features
@@ -232,12 +267,13 @@ plots = lapply(peak_cols, function(x){
   ggplot(mono_mc, aes(log2(quantity), .data[[x]], color = .data$strain)) + 
     geom_point(size = 0.2) +
     geom_smooth(method = MASS::rlm) +
-    labs(x = expression(log[2]*Q), y = sub(pattern = "_", replacement = " ", x)) +
+    labs(x = expression(log[2]*Q), 
+         y = sub(pattern = "_", replacement = " ", x)) +
     scale_color_manual(values = strain_color) +
     theme(legend.position = "none")
 })
 
-cowplot::plot_grid(plotlist = plots, align = 'hv', ncol = 3, nrow = 2)
+plot_grid(plotlist = plots, align = 'hv', ncol = 3, nrow = 2)
 ```
 
 ```{r}
@@ -246,24 +282,25 @@ cowplot::plot_grid(plotlist = plots, align = 'hv', ncol = 3, nrow = 2)
 #| fig-cap: Correlations of DNA quantity and peak-associated features extracted from single species melting curves. 
 library(corrplot)
 mono_mc_vars = mono_mc |> 
-    dplyr::mutate(log2Q = log2(quantity)) |> 
-    dplyr::select(well_position, log2Q, matches(peak_cols)) |> 
-    dplyr::rename(`$log[2]*Q` = log2Q) |> 
-    dplyr::rename_with(.fn = function(x) sub("_", " ", x), .cols = matches(peak_cols))
+  dplyr::mutate(log2Q = log2(quantity)) |> 
+  dplyr::select(well_position, log2Q, matches(peak_cols)) |> 
+  dplyr::rename(`$log[2]*Q` = log2Q) |> 
+  dplyr::rename_with(.fn = function(x) sub("_", " ", x), 
+                     .cols = matches(peak_cols))
 
 cols = c('Reds','Purples')
 p_mc_corrplot = lapply(seq_along(strain_label), function(i){
-    vars = mono_mc_vars  |> 
-        dplyr::filter(well_position %in% strain_single_well[[i]]) |> 
-        dplyr::select(-well_position)
-    M = cor(vars)
-    T = cor.mtest(vars, conf.level = 0.95)
-    corrplot::corrplot(M, 
-        diag = FALSE, addCoef.col = 'grey80',
-        col = COL1(cols[[i]]),
-        tl.srt = 30,
-        tl.col = strain_color[[i]],
-        p.mat = T$p)
+  vars = mono_mc_vars  |> 
+    dplyr::filter(well_position %in% strain_single_well[[i]]) |> 
+    dplyr::select(-well_position)
+  M = cor(vars)
+  T = cor.mtest(vars, conf.level = 0.95)
+  corrplot::corrplot(M, 
+                     diag = FALSE, addCoef.col = 'grey80',
+                     col = COL1(cols[[i]]),
+                     tl.srt = 30,
+                     tl.col = strain_color[[i]],
+                     p.mat = T$p)
 })
 
 ```
@@ -272,69 +309,69 @@ p_mc_corrplot = lapply(seq_along(strain_label), function(i){
 #| label: fig-correlation-of-log2Q-and-peak-height
 #| fig-cap: Correlation of log2-transformed DNA quantities and peak heights
 p_peak_height = lapply(seq_along(strain_label), function(i){
-    mono_mc |> 
-        dplyr::filter(well_position %in% strain_single_well[[i]]) |> 
-        ggplot(aes(peak_height, log2(quantity))) +
-        geom_smooth(method = 'lm', color = strain_color[[i]]) +
-        geom_point(shape = 21, color = strain_color[[i]]) +
-        labs(x = 'peak height',
-             y = expression(log[2]*Q))
+  mono_mc |> 
+    dplyr::filter(well_position %in% strain_single_well[[i]]) |> 
+    ggplot(aes(peak_height, log2(quantity))) +
+    geom_smooth(method = 'lm', color = strain_color[[i]]) +
+    geom_point(shape = 21, color = strain_color[[i]]) +
+    labs(x = 'peak height',
+         y = expression(log[2]*Q))
 })
 
-cowplot::plot_grid(plotlist = p_peak_height, ncol = 3, nrow = 2)
+plot_grid(plotlist = p_peak_height, ncol = 3, nrow = 2)
 ```
 
 ```{r}
 #| label: fig-correlation-of-log2Q-and-peak-area
 #| fig-cap: Correlation of log2-transformed DNA quantities and peak areas
 p_peak_area = lapply(seq_along(strain_label), function(i){
-    mono_mc |> 
+  mono_mc |> 
     dplyr::filter(well_position %in% strain_single_well[[i]]) |> 
     ggplot(aes(peak_area, log2(quantity))) +
     geom_smooth(method = 'lm', color = strain_color[[i]]) +
     geom_point(shape = 21, color = strain_color[[i]]) +
-        labs(x = 'peak area', y = expression(log[2]*Q))
+    labs(x = 'peak area', y = expression(log[2]*Q))
 })
 
-cowplot::plot_grid(plotlist = p_peak_area, ncol = 3, nrow = 2)
+plot_grid(plotlist = p_peak_area, ncol = 3, nrow = 2)
 ```
 
-### Comparision of ct and mc modelling
+### Comparision of Ct and MC modelling
 
 ```{r}
 qs_single_results = qs_results |> 
-    dplyr::filter(well_position %in% unlist(strain_single_well))
+  dplyr::filter(well_position %in% unlist(strain_single_well))
 qs_single_results
 ```
 
 
 ```{r}
 model_metric = function(formula, data, ...){
-    model = lm(formula, data)
-    summary = summary(model)
-    quosures = enquos(...)
-    tibble(data = deparse(substitute(data)), 
-           formula = paste(as.character(formula), collapse = " "), 
-           metric = c("r_squared", "adj_r_squared"),
-           value = c(summary$r.squared, summary$adj.r.squared)) |> 
-           dplyr::mutate(!!!quosures, .before = 1)
+  model = lm(formula, data)
+  summary = summary(model)
+  quosures = enquos(...)
+  tibble(data = deparse(substitute(data)), 
+         formula = paste(as.character(formula), collapse = " "), 
+         metric = c("r_squared", "adj_r_squared"),
+         value = c(summary$r.squared, summary$adj.r.squared)) |> 
+    dplyr::mutate(!!!quosures, .before = 1)
 }
 ```
 
 ```{r}
 lapply(seq_along(strain_label), function(i){
-    list(
-        model_metric(log2(quantity) ~ ct, 
-            mono_ct |> dplyr::filter(well_position %in% strain_single_well[[i]]),
-            source = 'mono_ct', label = strain_label[[i]]),
-        model_metric(log2(quantity) ~ peak_area, mono_mc |> dplyr::filter(well_position %in% strain_single_well[[i]]), source = 'mono_mc', label = strain_label[[i]]),
-        model_metric(log2(quantity) ~ peak_height, mono_mc |> dplyr::filter(well_position %in% strain_single_well[[i]]), source = 'mono_mc', label = strain_label[[i]]),
-        model_metric(log2(quantity) ~ peak_area + peak_height, mono_mc |> dplyr::filter(well_position %in% strain_single_well[[i]]), source = 'mono_mc', label = strain_label[[i]]),
-        model_metric(log2(quantity) ~ peak_area + peak_height + peak_start + peak_end, mono_mc |> dplyr::filter(well_position %in% strain_single_well[[i]]), source = 'mono_mc', label = strain_label[[i]])
-    ) |> 
+  list(
+    model_metric(log2(quantity) ~ ct, 
+                 mono_ct |> dplyr::filter(well_position %in% strain_single_well[[i]]),
+                 source = 'mono_ct', label = strain_label[[i]]),
+    model_metric(log2(quantity) ~ peak_area, mono_mc |> dplyr::filter(well_position %in% strain_single_well[[i]]), source = 'mono_mc', label = strain_label[[i]]),
+    model_metric(log2(quantity) ~ peak_height, mono_mc |> dplyr::filter(well_position %in% strain_single_well[[i]]), source = 'mono_mc', label = strain_label[[i]]),
+    model_metric(log2(quantity) ~ peak_area + peak_height, mono_mc |> dplyr::filter(well_position %in% strain_single_well[[i]]), source = 'mono_mc', label = strain_label[[i]]),
+    model_metric(log2(quantity) ~ peak_area + peak_height + peak_start + peak_end, mono_mc |> dplyr::filter(well_position %in% strain_single_well[[i]]), source = 'mono_mc', label = strain_label[[i]])
+  ) |> 
     bind_rows()
 }) |> 
-    bind_rows()
+  bind_rows()
 ```
 
 ```{r}
@@ -342,52 +379,64 @@ lapply(seq_along(strain_label), function(i){
 #| fig-cap: Comparison of Ct and Mc linear modelling
 
 plot_model_metric = function(model, test_data, color){
-    predictions = augment(model, newdata = test_data)
-    metrics = yardstick::metric_set(rmse, rsq, mae)
-    model_metrics = yardstick::metrics(predictions, truth = 'log2quantity', estimate = .fitted)
-    annotation = paste(model_metrics[['.metric']], round(model_metrics[['.estimate']], digits = 2), sep = ": ", collapse = "\n")
-    ggplot(predictions, aes(`log2quantity`, `.fitted`, color = I(color))) +
-        geom_point(shape = 21) +
-        geom_abline(slope = 1, linetype = 'dashed', color = color) +
-        geom_text(x=-Inf, y=Inf, label = annotation, hjust = -0.1, vjust = 1.1) +
-        coord_equal() +
-        xlim(c(-16,0)) + ylim(c(-16, 0)) +
-        labs(x = expression(log[2]*Q[true]), y = expression(log[2]*Q[pred]))
+  predictions = augment(model, newdata = test_data)
+  metrics = metric_set(rmse, rsq, mae)
+  model_metrics = metrics(predictions, 
+                          truth = 'log2quantity', 
+                          estimate = .fitted)
+  annotation = paste(model_metrics[['.metric']], 
+                     round(model_metrics[['.estimate']], digits = 2), 
+                     sep = ": ", 
+                     collapse = "\n")
+  ggplot(predictions, aes(`log2quantity`, `.fitted`, color = I(color))) +
+    geom_point(shape = 21) +
+    geom_abline(slope = 1, linetype = 'dashed', color = color) +
+    geom_text(x=-Inf, y=Inf, label = annotation, hjust = -0.1, vjust = 1.1) +
+    coord_equal() +
+    xlim(c(-16,0)) + ylim(c(-16, 0)) +
+    labs(x = expression(log[2]*Q[true]), y = expression(log[2]*Q[pred]))
 }
 
 p_model_ct = lapply(seq_along(strain_label), function(i){
-    data = mono_ct |> dplyr::filter(well_position %in% strain_single_well[[i]]) |> 
-        mutate(log2quantity = log2(quantity))
-    data_split_single = initial_split(data)
-    data_train_single = training(data_split_single)
-    data_test_single = testing(data_split_single)
-    model = lm(log2quantity ~ ct, data_train_single)
-    p = plot_model_metric(model, data_test_single, strain_color[[i]]) + labs(subtitle = 'Ct model')
-    return(p)
+  data = mono_ct |> 
+    dplyr::filter(well_position %in% strain_single_well[[i]]) |> 
+    mutate(log2quantity = log2(quantity))
+  data_split_single = initial_split(data)
+  data_train_single = training(data_split_single)
+  data_test_single = testing(data_split_single)
+  model = lm(log2quantity ~ ct, data_train_single)
+  p = plot_model_metric(model, data_test_single, 
+                        strain_color[[i]]) + labs(subtitle = 'Ct model')
+  return(p)
 })
 
 p_model_mc = lapply(seq_along(strain_label), function(i){
-    data = mono_mc |> dplyr::filter(well_position %in% strain_single_well[[i]]) |> 
-        mutate(log2quantity = log2(quantity))
-    data_split_single = initial_split(data)
-    data_train_single = training(data_split_single)
-    data_test_single = testing(data_split_single)
-    model = lm(log2quantity ~ peak_area + peak_height + peak_start + peak_end, data_train_single)
-    plot_model_metric(model, data_test_single, strain_color[[i]]) + labs(subtitle = 'MC model')
+  data = mono_mc |> 
+    dplyr::filter(well_position %in% strain_single_well[[i]]) |> 
+    mutate(log2quantity = log2(quantity))
+  data_split_single = initial_split(data)
+  data_train_single = training(data_split_single)
+  data_test_single = testing(data_split_single)
+  model = lm(log2quantity ~ peak_area + peak_height + peak_start + peak_end, 
+             data_train_single)
+  plot_model_metric(model, data_test_single, strain_color[[i]]) + 
+    labs(subtitle = 'MC model')
 })
 
 
 
-cowplot::plot_grid(plotlist = c(p_model_ct, p_model_mc), align = 'hv', ncol = 3, nrow = 2)
+plot_grid(plotlist = c(p_model_ct, p_model_mc), align = 'hv', ncol = 2, nrow = 2)
 ```
 
 ## Combined results for single species
 
 ```{r}
 #| label: fig-linear-modelling-of-single-species
-#| fig-width: 9
-#| fig-cap: Linear modelling and prediction of single species abundance with threshold cycle (Ct) and melting curve features in a two-species SynComs (red, E. coli. purple, P. putida. Same below). 
-cowplot::plot_grid(plotlist = c(p_amp, p_mc, p_model_ct, p_model_mc), align = 'hv', ncol = 4, nrow = 2, labels = 'auto')
+#| fig-width: 12
+#| fig-cap: Linear modelling and prediction of single species abundance with threshold cycle (Ct) and melting curve features in a two-species SynComs (red, *E. coli*. purple, *P. putida*. Same below). 
+plot_grid(plotlist = c(p_amp, p_mc, p_model_ct, p_model_mc), 
+          align = 'hv', 
+          ncol = 4, nrow = 2, labels = 'auto')
 ```
 
 ## Two-species design
@@ -397,35 +446,38 @@ cowplot::plot_grid(plotlist = c(p_amp, p_mc, p_model_ct, p_model_mc), align = 'h
 ```{r}
 #| label: fig-plate-layout-of-gradient-matrix
 p_concentration = lapply(seq_along(strain_label), function(i){
-    plot_384_single_concentration(plate2, strain_label[[i]], well_size = 1.5) + 
-        scale_color_gradient(high = strain_color[[i]], low = "white", trans = "log2", na.value = "grey90") +
-        coord_equal(xlim = c(6.5,22.5)) +
-        theme(legend.position = 'none',
-              axis.text = element_blank())
+  plot_384_single_concentration(plate2, strain_label[[i]], well_size = 1.5) + 
+    scale_color_gradient(high = strain_color[[i]], 
+                         low = "white", 
+                         trans = "log2", 
+                         na.value = "grey90") +
+    coord_equal(xlim = c(6.5,22.5)) +
+    theme(legend.position = 'none',
+          axis.text = element_blank())
 })
 
 p_concentration[[1]] = p_concentration[[1]] + 
-    labs(x = " ",
-          y = expression(log[2]*Q[1]~(low %->% high)))
+  labs(x = " ", y = expression(log[2]*Q[1]~(low %->% high)))
+
 p_concentration[[2]] = p_concentration[[2]] + 
-    labs(x = expression(log[2]*Q[2]~(high %->% low)),
-          y = " ")
+  labs(x = expression(log[2]*Q[2]~(high %->% low)), y = " ")
 
 plate3 = plate2 |> 
-    dplyr::filter(well_position %in% gradient_matrix_well)
-p_matrix = plot_384_community_structure(plate3) + 
-    scale_fill_manual(values = c("red3","purple3")) +
-    ggplot2::coord_equal(xlim = c(6.5,22.5)) +
-    theme(legend.position = 'none',
-          axis.text = element_blank()) +
-    labs(x = expression(log[2]*Q[2]~(high %->% low)),
-          y = expression(log[2]*Q[1]~(low %->% high)))
+  dplyr::filter(well_position %in% gradient_matrix_well)
 
-cowplot::plot_grid(p_concentration[[1]], 
-    p_concentration[[2]], 
-    p_matrix, 
-    align = 'hv',
-    ncol = 3, nrow = 2)
+p_matrix = plot_384_community_structure(plate3) + 
+  scale_fill_manual(values = c("red3","purple3")) +
+  coord_equal(xlim = c(6.5,22.5)) +
+  theme(legend.position = 'none',
+        axis.text = element_blank()) +
+  labs(x = expression(log[2]*Q[2]~(high %->% low)),
+       y = expression(log[2]*Q[1]~(low %->% high)))
+
+plot_grid(p_concentration[[1]], 
+          p_concentration[[2]], 
+          p_matrix, 
+          align = 'hv',
+          ncol = 3, nrow = 2)
 ```
 
 
@@ -434,71 +486,32 @@ cowplot::plot_grid(p_concentration[[1]],
 #| label: fig-mc-of-gradient-matrix
 mc_df = mc2tbl(mc)
 mc_df_matrix = mc_df |> 
-    dplyr::filter(well_position %in% gradient_matrix_well) |> 
-    dplyr::mutate_at(c('label_E','label_P'), function(x) log2(x) |> as_factor() |> fct_rev())
+  dplyr::filter(well_position %in% gradient_matrix_well) |> 
+  dplyr::mutate_at(c('label_E','label_P'), 
+                   function(x) log2(x) |> as_factor() |> fct_rev())
 
 ggplot(mc_df_matrix, aes(temperature, derivative, group = well_position)) +
-    geom_line() +
-    scale_x_continuous(position = 'top') +
-    facet_grid(label_E ~ label_P, switch = 'y') +
-    labs(x = expression(log[2]*Q[2]~(high %->% low)),
-          y = expression(log[2]*Q[1]~(low %->% high))) +
-    theme(legend.position = "none",
+  geom_line() +
+  scale_x_continuous(position = 'top') +
+  facet_grid(label_E ~ label_P, switch = 'y') +
+  labs(x = expression(log[2]*Q[2]~(high %->% low)),
+       y = expression(log[2]*Q[1]~(low %->% high))) +
+  theme(legend.position = "none",
         panel.spacing = unit(1, "pt"),
         axis.ticks = element_blank(),
         axis.text = element_blank(),)
 ```
 
-### Data preprocess
-
-
-```{r}
-files = list.files("data-raw/modeling-qPCR", pattern = ".txt", full.names = TRUE)
-
-plate = read_csv(xfun::magic_path("modeling-plate-labels.csv")) |> 
-    mutate(label_E = ifelse(label_E == 0, 1, ifelse(label_E == 16, 0, 1/2^label_E)),
-           label_P = ifelse(label_P == 0, 1, ifelse(label_P == 16, 0, 1/2^label_P)))
-
-get_cycle = function(filename){
-    if (str_detect(filename, "cycle30")) return(30)
-    if (str_detect(filename, "cycle35")) return(35)
-    if (str_detect(filename, "cycle40")) return(40)
-    stop("Error: no pattern found in filename.")
-}
-
-get_repeat = function(filename){
-    str_extract(filename, "experiment[1-5]")  |> 
-        str_remove("experiment")  |> 
-        as.numeric()
-}
-
-mc0512 = lapply(seq_along(files), function(i){
-    filename = files[[i]]
-    all = read_quantstudio(filename)
-    sample = plate  |> 
-                mutate(cycle = get_cycle(filename), rep = get_repeat(filename))
-    mc = quantstudio2mc(all, primer = "V4", plate = sample)  |> 
-            filterData(from = 80, to = 90)  |> 
-            transformData(step = 0.1)
-    return(mc)
-})
-
-data0512 = lapply(mc0512, mc_tbl2wider) |> bind_rows()
-
-head(data0512)
-
-write_csv(data0512, file = "data-clean/20230512.csv")
-```
 
 ### Melting curve data modeling
 
 ```{r}
 mc_ml_data = read_csv("data-clean/20230512.csv") |> 
-    dplyr::filter(well_position %in% gradient_matrix_well,
-                  rep == 1,
-                  cycle == 30) |> 
-    dplyr::select(starts_with('label_'), starts_with('T')) |> 
-    mutate(label_E = log2(label_E), label_P = log2(label_P))
+  dplyr::filter(well_position %in% gradient_matrix_well,
+                rep == 1,
+                cycle == 30) |> 
+  dplyr::select(starts_with('label_'), starts_with('T')) |> 
+  mutate(label_E = log2(label_E), label_P = log2(label_P))
 
 write.csv(mc_ml_data, 'data-clean/story-mc-ml-data.csv')
 ```
@@ -567,159 +580,161 @@ multi_output_adaboost_regression = MultiOutputRegressor(base_regressor)
 
 # 创建不同的回归模型对象
 models = {
-    'Linear': LinearRegression(),
-    'Ridge': multi_output_ridge_regression,
-    'Lasso': multi_output_lasso_regression,
-    'ElasticNet': multi_output_elasticnet_regression,
-    'K-Neighbors': KNeighborsRegressor(),
-    'Decision Tree': DecisionTreeRegressor(),
-    'RandForest': RandomForestRegressor(),
-    'Bagging': multi_output_bagging_regression,
-    'AdaBoost': multi_output_adaboost_regression,
-    'GradBoost': multi_output_gradient_boosting_regression,
-    'SVM': multi_output_linear_svr_regression
-}
+  'Linear': LinearRegression(),
+  'Ridge': multi_output_ridge_regression,
+  'Lasso': multi_output_lasso_regression,
+  'ElasticNet': multi_output_elasticnet_regression,
+  'K-Neighbors': KNeighborsRegressor(),
+  'Decision Tree': DecisionTreeRegressor(),
+  'RandForest': RandomForestRegressor(),
+  'Bagging': multi_output_bagging_regression,
+  'AdaBoost': multi_output_adaboost_regression,
+  'GradBoost': multi_output_gradient_boosting_regression,
+  'SVM': multi_output_linear_svr_regression
+  }
 ```
 
 ```{python}
 import pandas as pd
 import numpy as np
-from tqdm import tqdm
 from sklearn.model_selection import train_test_split, KFold
-from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error, explained_variance_score
+from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
 import warnings
 
 class meltingCurveExperiment:
-    '''
-    define a meltingCurveExperiment
-    '''
-
-    def __init__(self, file=None, data=None, test_size=0.05):
-        if data is not None:
-            if file is not None:
-                # 如果同时提供了 file 和 data，发出警告并使用 data
-                warnings.warn("Both `file` and `data` have been provided. `data` will be used.", UserWarning)
-            data = data
-        elif file is not None:
-            # 如果只提供了 file，则从文件加载数据
-            data = pd.read_csv(file)
-        else:
-            # 如果没有提供 file 和 data，则引发错误
-            raise ValueError("You must provide a `file` or `data` argument.")
+  '''
+  define a meltingCurveExperiment
+  '''
+  
+  def __init__(self, file=None, data=None, test_size=0.05):
+    if data is not None:
+      if file is not None:
+        warnings.warn("`data` will be used.", UserWarning)
+        data = data
+    elif file is not None:
+      # 如果只提供了 file，则从文件加载数据
+      data = pd.read_csv(file)
+    else:
+      # 如果没有提供 file 和 data，则引发错误
+      raise ValueError("You must provide a `file` or `data` argument.")
         
-        data = data.dropna(axis=1,how='all')
-        data = data.dropna()
-        self.data = data
-        X = data.filter(regex = "^T")
-        y = data.filter(regex = "^label_")
-        self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(X, y, test_size=test_size)
-
-    def cross_validate_regression_models(self, models, cv=10):
-        """
-        对给定的多个回归模型使用十折交叉验证进行建模，并计算多个参数。
-
-        参数:
-        models: 字典，包含不同名称的回归模型对象，键为模型名称，值为模型对象。
-        cv: 整数，指定交叉验证的折数，默认为10。
+    data = data.dropna(axis=1, how='all')
+    data = data.dropna()
+    self.data = data
+    X = data.filter(regex = "^T")
+    y = data.filter(regex = "^label_")
+    self.X_train, self.X_test, self.y_train, self.y_test = (
+      train_test_split(X, y, test_size=test_size)
+    )
+            
+  def cross_validate_regression_models(self, models, cv=10):
+    """
+    对给定的多个回归模型使用十折交叉验证进行建模，并计算多个参数。
+    
+    参数:
+      models: 字典，包含不同名称的回归模型对象，键为模型名称，值为模型对象。
+      cv: 整数，指定交叉验证的折数，默认为10。
+      
+    返回值:
+      results: 字典，包含每个模型的参数值，键为模型名称，值为参数值的字典，其中包含MSE、R^2、MAE和EVS。
+    """
+    results = {}
+    kf = KFold(n_splits=cv, shuffle=True, random_state=42)
+    
+    for model_name, model in models.items():
+      rmse_values = []
+      r2_values = []
+      mae_values = []
+      
+      for train_idx, test_idx in kf.split(self.X_train):
+        X_train_fold = self.X_train.iloc[train_idx]
+        X_test_fold = self.X_train.iloc[test_idx]
+        y_train_fold = self.y_train.iloc[train_idx]
+        y_test_fold = self.y_train.iloc[test_idx]
         
-        返回值:
-        results: 字典，包含每个模型的参数值，键为模型名称，值为参数值的字典，其中包含MSE、R^2、MAE和EVS。
-        """
-        results = {}
-        kf = KFold(n_splits=cv, shuffle=True, random_state=42)
-
-        for model_name, model in models.items():
-            rmse_values = []
-            r2_values = []
-            mae_values = []
-            evs_values = []
-
-            for train_idx, test_idx in tqdm(kf.split(self.X_train), total=cv, desc=f"Running {cv}-fold CV for {model_name}"):
-                X_train_fold, X_test_fold = self.X_train.iloc[train_idx], self.X_train.iloc[test_idx]
-                y_train_fold, y_test_fold = self.y_train.iloc[train_idx], self.y_train.iloc[test_idx]
-
-                # 使用模型对训练集进行拟合
-                model.fit(X_train_fold, y_train_fold)
-
-                # 使用训练好的模型进行预测
-                y_pred_fold = model.predict(X_test_fold)
-
-                # 计算每个折叠的均方误差、R^2值、平均绝对误差和解释方差得分
-                mse_fold = mean_squared_error(y_test_fold, y_pred_fold)
-                r2_fold = r2_score(y_test_fold, y_pred_fold)
-                mae_fold = mean_absolute_error(y_test_fold, y_pred_fold)
-                evs_fold = explained_variance_score(y_test_fold, y_pred_fold)
-
-                rmse_values.append(np.sqrt(mse_fold))
-                r2_values.append(r2_fold)
-                mae_values.append(mae_fold)
-                evs_values.append(evs_fold)
-
-            # 将结果存储在字典中
-            results[model_name] = {'RMSE': rmse_values, 'R^2': r2_values, 'MAE': mae_values, 'EVS': evs_values}
+        # 使用模型对训练集进行拟合
+        model.fit(X_train_fold, y_train_fold)
+        
+        # 使用训练好的模型进行预测
+        y_pred_fold = model.predict(X_test_fold)
+        
+        # 计算每个折叠的均方误差、R^2值、平均绝对误差和解释方差得分
+        mse_fold = mean_squared_error(y_test_fold, y_pred_fold)
+        r2_fold = r2_score(y_test_fold, y_pred_fold)
+        mae_fold = mean_absolute_error(y_test_fold, y_pred_fold)
+        
+        rmse_values.append(np.sqrt(mse_fold))
+        r2_values.append(r2_fold)
+        mae_values.append(mae_fold)
+        
+        # 将结果存储在字典中
+        results[model_name] = {'RMSE': rmse_values, 
+        'R^2': r2_values, 
+        'MAE': mae_values}
         self.results = results
-
-
-    def results_to_df(self, extra = None):
-        data_dict = self.results
-        raw = []
-        for i in data_dict.keys():
-            for j in data_dict[i].keys():
-                raw.append({'model':i, 'metric':j, 'value': data_dict[i][j]})
+            
+                      
+  def results_to_df(self, extra = None):
+    data_dict = self.results
+    raw = []
+    for i in data_dict.keys():
+      for j in data_dict[i].keys():
+        raw.append({'model':i, 'metric':j, 'value': data_dict[i][j]})
         df = pd.DataFrame(raw)
         df = df.explode('value').reset_index(drop=True)
-
-        if extra is not None:
-            for col_name, col_data in extra.items():
-                df[col_name] = col_data
         
-        # return
-        return(df)
+    if extra is not None:
+      for col_name, col_data in extra.items():
+        df[col_name] = col_data
+        
+    # return
+    return(df)
 ```
-
-
-
+                                
+                                
+                                
 ```{python}
 exp = meltingCurveExperiment(file='data-clean/story-mc-ml-data.csv')
 exp.cross_validate_regression_models(models=models)
 exp.results_to_df().to_csv('data-clean/story-mc-ml-metric.csv')
 ```
-
+                                
 ### Modelling
-
+                                
 We test different model in Python. Metric comparison revealed that ensemble machine learning methods, including Bagging, GradBoost and RandForest, have the best prediction performances.
-
-
+                                
+                                
 ```{r}
-model_ordered = 'Linear,Lasso,Ridge,ElasticNet,SVM,GradBoost,AdaBoost,Bagging,K-Neighbors,Decision Tree,RandForest'  |> str_split_1(",")
+model_ordered = paste('Linear,Lasso,Ridge,ElasticNet,SVM,GradBoost,AdaBoost',
+                      'Bagging,K-Neighbors,Decision Tree,RandForest',
+                      sep = "")  |> str_split_1(",")
 mc_ml_cv_metric = read_csv('data-clean/story-mc-ml-metric.csv') |> 
-    select(-1) |> 
-    dplyr::filter(metric != 'EVS') |> 
-    dplyr::mutate(model = factor(model, levels = model_ordered))
+  select(-1) |> 
+  dplyr::mutate(model = factor(model, levels = model_ordered))
 ylab = c('RMSE' = 'rmse', 'R^2' = 'rsq', 'MAE' = 'mae')
 metrics = mc_ml_cv_metric$metric |> unique()
 
 p_mc_ml_cv_metric = lapply(metrics, function(x){
-    mc_ml_cv_metric |> 
-        dplyr::filter(metric == x) |> 
-        ggplot(aes(model, value)) +
-        geom_boxplot() +
-        labs(x = NULL, y = ylab[[x]]) +
-        theme(axis.text.x = element_text(angle = 45, hjust = 1.1, vjust = 1.1))
+  mc_ml_cv_metric |> 
+    dplyr::filter(metric == x) |> 
+    ggplot(aes(model, value)) +
+    geom_boxplot() +
+    labs(x = NULL, y = ylab[[x]]) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1.1, vjust = 1.1))
 })
 
-cowplot::plot_grid(plotlist = p_mc_ml_cv_metric, ncol = 3, nrow = 2)
+plot_grid(plotlist = p_mc_ml_cv_metric, ncol = 3, nrow = 2)
 
 ```
 
 ```{r}
 # data
 mc_ml_data = read_csv("data-clean/20230512.csv") |> 
-    dplyr::filter(well_position %in% gradient_matrix_well,
-                  rep == 1,
-                  cycle == 30) |> 
-    dplyr::select(starts_with('label_'), starts_with('T')) |> 
-    mutate(label_E = log2(label_E), label_P = log2(label_P))
+  dplyr::filter(well_position %in% gradient_matrix_well,
+                rep == 1,
+                cycle == 30) |> 
+  dplyr::select(starts_with('label_'), starts_with('T')) |> 
+  mutate(label_E = log2(label_E), label_P = log2(label_P))
 
 data_split = initial_split(mc_ml_data)
 data_train = training(data_split)
@@ -733,13 +748,16 @@ rf_spec = rand_forest(mode = "regression", trees = 1000) |>
   set_engine("ranger", importance = 'impurity', num.threads = 10)
 
 plot_model_metric = function(predictions, model_metrics, truth_label, color){
-    metrics = yardstick::metric_set(rmse, rsq, mae)
-    annotation = paste(model_metrics[['.metric']], format(round(model_metrics[['.estimate']], 2), digits = 2), sep = ": ", collapse = "\n")
-    ggplot(predictions, aes(.data[[truth_label]], `.pred`, color = I(color))) +
-        geom_point(shape = 21) +
-        geom_abline(slope = 1, linetype = 'dashed', color = color) +
-        geom_text(x = -Inf, y = Inf, color = I(color), label = annotation, hjust = -0.1, vjust = 1.1) +
-        labs(x = expression(log[2]*Q[true]), y = expression(log[2]*Q[pred]))
+  metrics = yardstick::metric_set(rmse, rsq, mae)
+  annotation = paste(model_metrics[['.metric']], 
+                     format(round(model_metrics[['.estimate']], 2), digits = 2), 
+                     sep = ": ", 
+                     collapse = "\n")
+  ggplot(predictions, aes(.data[[truth_label]], `.pred`, color = I(color))) +
+    geom_point(shape = 21) +
+    geom_abline(slope = 1, linetype = 'dashed', color = color) +
+    geom_text(x = -Inf, y = Inf, color = I(color), label = annotation, hjust = -0.1, vjust = 1.1) +
+    labs(x = expression(log[2]*Q[true]), y = expression(log[2]*Q[pred]))
 }
 ```
 
@@ -747,52 +765,54 @@ plot_model_metric = function(predictions, model_metrics, truth_label, color){
 #| fig-asp: 1
 #| fig-width: 5
 p_lm_predict = function(){
-    lapply(seq_along(strain_label), function(i){
-        train = data_train |> select(matches(strain_label[[i]]), starts_with("T"))
-        test = data_test  |> select(matches(strain_label[[i]]), starts_with("T"))
-        recipe = recipe(as.formula(paste(strain_label[[i]], '.', sep = '~')), data = train)
-
-        rf_wflow = workflow()  |> 
-                    add_recipe(recipe)  |> 
-                    add_model(lm_spec) 
-
-        rf_fit = rf_wflow |> 
-                    fit(train)
-
-        prediction = augment(rf_fit, new_data = test)
-
-        metric = prediction |> 
-            metrics(truth = strain_label[[i]], estimate = .pred)
-
-        plot_model_metric(prediction, metric, strain_label[[i]], strain_color[[i]]) + labs(subtitle = 'Linear')
-    })
+  lapply(seq_along(strain_label), function(i){
+    train = data_train |> select(matches(strain_label[[i]]), starts_with("T"))
+    test = data_test  |> select(matches(strain_label[[i]]), starts_with("T"))
+    recipe = recipe(as.formula(paste(strain_label[[i]], '.', sep = '~')), 
+                    data = train)
+    
+    rf_wflow = workflow()  |> 
+      add_recipe(recipe)  |> 
+      add_model(lm_spec) 
+    
+    rf_fit = rf_wflow |> 
+      fit(train)
+    
+    prediction = augment(rf_fit, new_data = test)
+    
+    metric = prediction |> 
+      metrics(truth = strain_label[[i]], estimate = .pred)
+    
+    plot_model_metric(prediction, metric, strain_label[[i]], strain_color[[i]]) + 
+      labs(subtitle = 'Linear')
+  })
 }
 
 p_rf_predict = function(){
-    lapply(seq_along(strain_label), function(i){
-        train = data_train |> select(matches(strain_label[[i]]), starts_with("T"))
-        test = data_test  |> select(matches(strain_label[[i]]), starts_with("T"))
-        recipe = recipe(as.formula(paste(strain_label[[i]], '.', sep = '~')), data = train)
-
-        rf_wflow = workflow()  |> 
-                    add_recipe(recipe)  |> 
-                    add_model(rf_spec) 
-
-        rf_fit = rf_wflow |> 
-                    fit(train)
-
-        prediction = augment(rf_fit, new_data = test)
-
-        metric = prediction |> 
-            metrics(truth = strain_label[[i]], estimate = .pred)
-
-        plot_model_metric(prediction, metric, strain_label[[i]], strain_color[[i]])+ labs(subtitle = 'RandForest')
-    })
+  lapply(seq_along(strain_label), function(i){
+    train = data_train |> select(matches(strain_label[[i]]), starts_with("T"))
+    test = data_test  |> select(matches(strain_label[[i]]), starts_with("T"))
+    recipe = recipe(as.formula(paste(strain_label[[i]], '.', sep = '~')), 
+                    data = train)
+    
+    rf_wflow = workflow()  |> 
+      add_recipe(recipe)  |> 
+      add_model(rf_spec) 
+    
+    rf_fit = rf_wflow |> 
+      fit(train)
+    
+    prediction = augment(rf_fit, new_data = test)
+    
+    metric = prediction |> 
+      metrics(truth = strain_label[[i]], estimate = .pred)
+    
+    plot_model_metric(prediction, metric, strain_label[[i]], strain_color[[i]]) + 
+      labs(subtitle = 'RandForest')
+  })
 }
 
-cowplot::plot_grid(plotlist = c(p_lm_predict(), p_rf_predict()), ncol = 2, nrow = 2)
-
-
+plot_grid(plotlist = c(p_lm_predict(), p_rf_predict()), ncol = 2, nrow = 2)
 ```
 
 
@@ -800,18 +820,20 @@ cowplot::plot_grid(plotlist = c(p_lm_predict(), p_rf_predict()), ncol = 2, nrow 
 ```{r}
 # data
 replicate = read_csv("data-clean/20230512.csv") |> 
-    dplyr::filter(well_position %in% gradient_matrix_well,
-                  rep == 4,
-                  cycle == 35) |> 
-    dplyr::select(starts_with('label_'), starts_with('T')) |> 
-    mutate(label_E = log2(label_E), label_P = log2(label_P))
+  dplyr::filter(well_position %in% gradient_matrix_well,
+                rep == 4,
+                cycle == 35) |> 
+  dplyr::select(starts_with('label_'), starts_with('T')) |> 
+  mutate(label_E = log2(label_E), label_P = log2(label_P))
 
 data_split = initial_split(replicate)
 data_train = training(data_split)
 data_test = testing(data_split)
 
-cowplot::plot_grid(plotlist = c(p_lm_predict(), p_rf_predict()), ncol = 3, nrow = 2)
+plot_grid(plotlist = c(p_lm_predict(), p_rf_predict()), ncol = 3, nrow = 2)
 ```
+
+## Model Optimization
 
 ### Size of training data
 
@@ -820,43 +842,48 @@ cowplot::plot_grid(plotlist = c(p_lm_predict(), p_rf_predict()), ncol = 3, nrow 
 prop = rep(seq(0.05, 0.95, by = 0.05), each = 10)
 data_split = initial_split(mc_ml_data)
 nums = prop * nrow(training(data_split))
-prop_gradient_metric = lapply(nums, function(p){
-    lapply(seq_along(strain_label), function(i){
-        train = training(data_split) |> select(matches(strain_label[[i]]), starts_with("T")) |> sample_n(p)
-        test = testing(data_split)|> select(matches(strain_label[[i]]), starts_with("T"))
-        rf_recipe = recipe(as.formula(paste(strain_label[[i]], '.', sep = '~')), data = train)
 
-        rf_wflow = workflow()  |> 
-                    add_recipe(rf_recipe)  |> 
-                    add_model(rf_spec) 
-
-        rf_fit = rf_wflow |> 
-                    fit(train)
-
-        prediction = augment(rf_fit, new_data = test)
-
-        prediction |> 
-            metrics(truth = strain_label[[i]], estimate = .pred) |> 
-            mutate(n = nrow(train), strain = strain_label[[i]])
-    }) |> bind_rows()
-
+prop_gradient_metric = lapply(nums, function(n){
+  lapply(seq_along(strain_label), function(i){
+    # get train data
+    train = training(data_split) |> 
+      select(matches(strain_label[[i]]), starts_with("T")) |> 
+      sample_n(n)
+    test = testing(data_split) |> 
+      select(matches(strain_label[[i]]), starts_with("T"))
+    
+    # fit random forest model
+    rf_recipe = recipe(as.formula(paste(strain_label[[i]], '.', sep = '~')), data = train)
+    rf_wflow = workflow()  |> 
+      add_recipe(rf_recipe)  |> 
+      add_model(rf_spec) 
+    rf_fit = rf_wflow |> 
+      fit(train)
+    
+    prediction = augment(rf_fit, new_data = test)
+    
+    prediction |> 
+      metrics(truth = strain_label[[i]], estimate = .pred) |> 
+      mutate(n = nrow(train), strain = strain_label[[i]])
+  }) |> bind_rows()
+  
 }) |> 
-    bind_rows()
+  bind_rows()
 ```
 
 ```{r}
 p_grad_metric = lapply(seq_along(strain_label), function(i){
-    lapply(c('rmse','rsq','mae'), function(m){
-        prop_gradient_metric |> 
-            dplyr::filter(strain == strain_label[[i]], `.metric` == m) |> 
-            ggplot(aes(n, `.estimate`, color = I(strain_color[[i]]))) +
-            geom_point(shape = 21) +
-            geom_smooth() +
-            labs(x = 'n', y = m)
-    })
+  lapply(c('rmse','rsq','mae'), function(m){
+    prop_gradient_metric |> 
+      dplyr::filter(strain == strain_label[[i]], `.metric` == m) |> 
+      ggplot(aes(n, `.estimate`, color = I(strain_color[[i]]))) +
+      geom_point(shape = 21) +
+      geom_smooth() +
+      labs(x = 'n', y = m)
+  })
 }) |> unlist(recursive = FALSE)
 
-cowplot::plot_grid(plotlist = p_grad_metric, ncol = 3, nrow = 2)
+plot_grid(plotlist = p_grad_metric, ncol = 3, nrow = 2)
 ```
 
 
@@ -864,40 +891,40 @@ Use one experiment data to train, and the other experiment data to test.
 
 ```{r}
 rep2 = read_csv("data-clean/20230512.csv") |> 
-    dplyr::filter(well_position %in% gradient_matrix_well,
-                  rep == 2,
-                  cycle == 30) |> 
-    dplyr::select(starts_with('label_'), starts_with('T')) |> 
-    mutate(label_E = log2(label_E), label_P = log2(label_P))
+  dplyr::filter(well_position %in% gradient_matrix_well,
+                rep == 2,
+                cycle == 30) |> 
+  dplyr::select(starts_with('label_'), starts_with('T')) |> 
+  mutate(label_E = log2(label_E), label_P = log2(label_P))
 
 rep3 = read_csv("data-clean/20230512.csv") |> 
-    dplyr::filter(well_position %in% gradient_matrix_well,
-                  rep == 3,
-                  cycle == 30) |> 
-    dplyr::select(starts_with('label_'), starts_with('T')) |> 
-    mutate(label_E = log2(label_E), label_P = log2(label_P))
+  dplyr::filter(well_position %in% gradient_matrix_well,
+                rep == 3,
+                cycle == 30) |> 
+  dplyr::select(starts_with('label_'), starts_with('T')) |> 
+  mutate(label_E = log2(label_E), label_P = log2(label_P))
 ```
 
 ```{r}
 rf_model_metric = function(train_data, truth, test_data = NULL, ...){
-    cols = colnames(train_data)
-    ycol = cols[str_detect(cols, "^T")]
-    rf_recipe = recipe(as.formula(paste(truth, '.', sep = '~')), data = train_data)
-    rf_spec = rand_forest(mode = "regression", trees = 1000) |> 
-        set_engine("ranger", importance = 'impurity', num.threads = 10)
-    rf_wflow = workflow()  |> 
-                add_recipe(rf_recipe)  |> 
-                add_model(rf_spec) 
-
-    rf_fit = rf_wflow |> 
-                fit(train_data)
-
-    prediction = augment(rf_fit, new_data = test_data)
-
-    extra = list(...)
-    prediction |> 
-        metrics(truth = truth, estimate = .pred) |> 
-        mutate(!!!extra)
+  cols = colnames(train_data)
+  ycol = cols[str_detect(cols, "^T")]
+  rf_recipe = recipe(as.formula(paste(truth, '.', sep = '~')), data = train_data)
+  rf_spec = rand_forest(mode = "regression", trees = 1000) |> 
+    set_engine("ranger", importance = 'impurity', num.threads = 10)
+  rf_wflow = workflow()  |> 
+    add_recipe(rf_recipe)  |> 
+    add_model(rf_spec) 
+  
+  rf_fit = rf_wflow |> 
+    fit(train_data)
+  
+  prediction = augment(rf_fit, new_data = test_data)
+  
+  extra = list(...)
+  prediction |> 
+    metrics(truth = truth, estimate = .pred) |> 
+    mutate(!!!extra)
 }
 ```
 
@@ -905,298 +932,28 @@ rf_model_metric = function(train_data, truth, test_data = NULL, ...){
 #| cache: true
 
 rf_rep_metric = lapply(prop, function(p){
-    lapply(seq_along(strain_label), function(i){
-        data_split = initial_split(rep2, prop = p)
-        ylab = strain_label[[i]]
-        train = training(data_split) |> select(matches(ylab), starts_with("T"))
-        test = rep3 |> select(matches(ylab), starts_with("T"))
-        rf_model_metric(train, truth = ylab, test_data = test, prop = nrow(train), species = ylab)
-    }) |> bind_rows()
+  lapply(seq_along(strain_label), function(i){
+    data_split = initial_split(rep2, prop = p)
+    ylab = strain_label[[i]]
+    train = training(data_split) |> select(matches(ylab), starts_with("T"))
+    test = rep3 |> select(matches(ylab), starts_with("T"))
+    rf_model_metric(train, truth = ylab, test_data = test, prop = nrow(train), species = ylab)
+  }) |> bind_rows()
 }) |> bind_rows()
 ```
 
 ```{r}
 ggplot(rf_rep_metric, aes(prop, `.estimate`, color = species)) +
-    geom_point(shape = 21) +
-    geom_smooth() +
-    facet_wrap(~ species + .metric, scales = 'free') +
-    scale_color_manual(values = strain_color)
+  geom_point(shape = 21) +
+  geom_smooth() +
+  facet_wrap(~ species + .metric, scales = 'free') +
+  scale_color_manual(values = strain_color)
 ```
 
-## Evaluation of model performance
+### Thermo cycles
 
-### By 16S rRNA gene sequencing
 
-Use DADA2 to process 16S rRNA gene sequencing data.
 
-```{r}
-#| eval: false
-# raw data
-dir = '/Volumes/Data/Projects/MbPL2024051607'
-fastq_files = list.files(path = dir, pattern = ".merged.fastq.gz", recursive = TRUE, full.names = TRUE)
-sample.names = dirname(fastq_files) |> basename()
+### Temperature increment rate
 
-# filter and trim sequence
-filt_path = file.path("./data-raw/filtered")
-if(!dir.exists(filt_path)) dir.create(filt_path)
-
-library(dada2)
-
-for(i in seq_along(fastq_files)) {
-  fastq_filt = file.path(filt_path, basename(fastq_files[i]))
-  filterAndTrim(fastq_files[i], fastq_filt, 
-                maxN = 0, maxEE = 2, truncQ = 2, rm.phix = TRUE,
-                compress = TRUE, multithread = TRUE)
-}
-```
-
-
-```{r}
-#| cache: true
-library(dada2)
-ngs_path = "data-raw/application-ngs"
-
-# learn error
-err = learnErrors(ngs_path, multithread = TRUE)
-
-# denoise
-dadaFs = derepFastq(ngs_path) |> dada(err = err, multithread = TRUE)
-names(dadaFs) = gsub(".merged.fastq.gz", "", names(dadaFs))
-
-# build sequence table
-seqtab = makeSequenceTable(dadaFs)
-
-# remove chimera
-seqtab.nochim = removeBimeraDenovo(seqtab, method = "consensus", multithread = TRUE, verbose = TRUE)
-
-# assign taxonomy
-silva_train_set = "/Users/gaoch/Projects/2024-05-24 Silva_138.1/silva_nr99_v138.1_train_set.fa.gz"
-taxa = assignTaxonomy(seqtab.nochim, silva_train_set, multithread = TRUE)
-```
-
-
-```{r}
-# build phyloseq object
-library(phyloseq)
-ps = phyloseq(otu_table(seqtab.nochim, taxa_are_rows = FALSE), tax_table(taxa))
-plot_bar(ps, fill = "Genus")
-```
-
-```{r}
-# merge low abundance
-taxa_sums = taxa_sums(ps)
-threshold = 0.01 * sum(taxa_sums) # threshold is 1%
-low_abundance = taxa_sums < threshold
-ps_merged = merge_taxa(ps, taxa_names(ps)[low_abundance])
-plot_bar(ps_merged, fill = "Genus")
-```
-
-```{r}
-tax_structure = otu_table(ps_merged) |> 
-    as.data.frame() |> 
-    tibble::rownames_to_column("sample") |> 
-    as_tibble()
-tax_table(ps_merged)[,'Genus'] |> as.character()
-colnames(tax_structure)[2:4] = c("ppu","eco","others")
-
-sequencing_result = tax_structure |> 
-    tidyr::pivot_longer(cols = -sample, names_to = "species", values_to = "quantity") |> 
-    filter(species != 'others') |> 
-    mutate(method = 'ngs')
-```
-
-
-```{r}
-library(ggplot2)
-ggplot(sequencing_result, aes(sample, quantity, fill = species)) +
-    geom_col()
-
-```
-
-### By strain-specific qPCR
-
-- Build standard curve
-- Calculate strain abundance
-
-```{r}
-library(mcmodel)
-
-# read qPCR results
-result = read_quantstudio(xfun::magic_path("application-qPCR-result.txt")) |> 
-    get_quantstudio_result() |> 
-    select(well_position, ct) |> 
-    mutate(ct = as.numeric(ct))
-
-# read plate layout
-plate = read_csv(xfun::magic_path("application-plate-layout.csv"))
-
-# combine results and plate layout
-result = result |> left_join(plate)
-```
-
-```{r}
-std_quantity = tibble(
-    well_position = paste0(rep("P", 24), 1:24),
-    log2quantity = (rep(2E9, 24)/rep(10^(0:7), each = 3)) |> log2()
-)
-
-std_sample = result |> 
-    filter(target == 'std') |> 
-    select(well_position, ct)  |> 
-    left_join(std_quantity) |> 
-    select(ct, log2quantity)|> 
-    na.omit()
-```
-
-```{r}
-ggplot(std_sample, aes(ct, log2quantity)) +
-    geom_point() +
-    geom_smooth(method = 'lm')
-```
-
-```{r}
-std_fit = lm(log2quantity ~ ct, std_sample)
-summary(std_fit)
-```
-
-
-```{r}
-unk_sample = result |> 
-    filter(target %in% c('EC','PP'))
-
-unk_sample_predition = augment(std_fit, newdata = unk_sample)
-```
-
-
-```{r}
-qPCR_result = unk_sample_predition |> 
-    summarise(predict = mean(.fitted, na.rm = TRUE), .by = c(sample, target)) |> 
-    mutate(species = if_else(target == 'EC', 'eco', 'ppu'),
-           quantity = 2^predict,
-           method = 'qPCR') |> 
-    select(sample, species, quantity, method)
-```
-
-```{r}
-qPCR_result |> 
-    ggplot(aes(sample, quantity, fill = species)) +
-    geom_col()
-```
-
-
-### By HRM-ML method
-
-
-
-```{r}
-filename = xfun::magic_path("application-qPCR-result.txt")
-plate = read_csv(xfun::magic_path("application-plate-layout.csv"))
-
-all = read_quantstudio(filename)
-sample = plate |> 
-    mutate(cycle = 30) |> 
-    dplyr::filter(target == '16S')
-mc240617 = quantstudio2mc(all, plate = sample)  |> 
-        filterData(from = 75, to = 90, well_position = sample$well_position)  |> 
-        transformData(step = 0.1)
-
-
-data240617 = mc_tbl2wider(mc240617)
-
-write_csv(data240617, "data-clean/20240617.csv")
-```
-
-
-```{r}
-# data
-gradient_matrix_well2 = paste0(rep(LETTERS[1:16],times=15),rep(3:18,each=16))
-train_data = read_csv("data-clean/20230512.csv") |> 
-    dplyr::filter(well_position %in% gradient_matrix_well,
-                  cycle == 30) |> 
-    dplyr::select(starts_with('label_'), starts_with('T')) |> 
-    mutate(label_E = log2(label_E), label_P = log2(label_P))
-
-# test data
-test_data = read_csv("data-clean/20240617.csv")
-
-rf_spec = rand_forest(mode = "regression", trees = 1000) |> 
-  set_engine("ranger", importance = 'impurity', num.threads = 10)
-
-predictions = lapply(seq_along(strain_label), function(i){
-        train = train_data |> select(matches(strain_label[[i]]), starts_with("T"))
-        recipe = recipe(as.formula(paste(strain_label[[i]], '.', sep = '~')), data = train)
-
-        rf_wflow = workflow()  |> 
-                    add_recipe(recipe)  |> 
-                    add_model(rf_spec) 
-
-        rf_fit = rf_wflow |> 
-                    fit(train)
-
-        prediction = augment(rf_fit, new_data = test_data) |> select(-starts_with("T")) |> 
-            mutate(label = strain_label[[i]])
-
-        return(prediction)
-    })
-
-HRM_result = predictions |> 
-    bind_rows() |> 
-    group_by(sample, label) |> 
-    summarise(.pred = mean(.pred)) |> 
-    mutate(species = if_else(label == 'label_E', 'eco', 'ppu'),
-           quantity = 2^.pred,
-           method = 'mc') |> 
-    select(sample, species, quantity, method)
-
-```
-
-### Comparison
-
-```{r}
-three_result = list(qPCR_result, sequencing_result, HRM_result) |> 
-    bind_rows() |> 
-    group_by(method, sample) |> 
-    mutate(prop = quantity/sum(quantity)) |> 
-    ungroup() |> 
-  filter(str_starts(sample, "[A-D]"))
-
-```
-
-```{r}
-ggplot(three_result, aes(sample, prop, fill = species)) +
-    geom_col() +
-    facet_wrap(~method, ncol = 1) +
-    scale_y_continuous(labels = scales::percent)
-
-```
-
-
-```{r}
-ec_prop = three_result |> 
-    filter(species == 'eco') |> 
-    pivot_wider(id_cols = sample, names_from = method, values_from = prop) |> 
-    na.omit()
-
-cor(ec_prop |> select(-sample), method = "spearman")
-```
-
-```{r}
-ec_prop |> 
-    rowwise() |> 
-    mutate(qPCR_vs_mc = mean(abs(qPCR - mc)),
-           qPCR_vs_ngs = -mean(abs(qPCR - ngs))) |> 
-    pivot_longer(cols = starts_with('qPCR_vs'), names_to = 'comparison', values_to = 'abs_distance') |> 
-    ggplot(ggplot2::aes(sample, abs_distance, fill = comparison)) +
-    geom_col() +
-    theme(legend.position = c(0.3, 0.9))
-```
-
-
-```{r}
-ggplot(ec_prop, ggplot2::aes(qPCR, mc)) +
-    geom_point()
-
-ggplot(ec_prop, ggplot2::aes(qPCR, ngs)) +
-    geom_point()
-```
 

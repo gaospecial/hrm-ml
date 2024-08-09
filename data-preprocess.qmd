@@ -1,5 +1,49 @@
-# Introduction
+# Data preprocess
 
 This is a book created from markdown and executable code.
 
 See @knuth84 for additional discussion of literate programming.
+
+## Data preprocess
+
+
+```{r}
+library(tidyverse, quietly = TRUE)
+library(mcmodel)
+
+files = list.files("data-raw/modeling-qPCR", pattern = ".txt", full.names = TRUE)
+
+plate = read_csv(xfun::magic_path("modeling-plate-labels.csv")) |> 
+  mutate(label_E = ifelse(label_E == 0, 1, ifelse(label_E == 16, 0, 1/2^label_E)),
+         label_P = ifelse(label_P == 0, 1, ifelse(label_P == 16, 0, 1/2^label_P)))
+
+get_cycle = function(filename){
+  if (str_detect(filename, "cycle30")) return(30)
+  if (str_detect(filename, "cycle35")) return(35)
+  if (str_detect(filename, "cycle40")) return(40)
+  stop("Error: no pattern found in filename.")
+}
+
+get_repeat = function(filename){
+  str_extract(filename, "experiment[1-5]")  |> 
+    str_remove("experiment")  |> 
+    as.numeric()
+}
+
+mc0512 = lapply(seq_along(files), function(i){
+  filename = files[[i]]
+  all = read_quantstudio(filename)
+  sample = plate  |> 
+    mutate(cycle = get_cycle(filename), rep = get_repeat(filename))
+  mc = quantstudio2mc(all, primer = "V4", plate = sample)  |> 
+    filterData(from = 80, to = 90)  |> 
+    transformData(step = 0.1)
+  return(mc)
+})
+
+data0512 = lapply(mc0512, mc_tbl2wider) |> bind_rows()
+
+head(data0512)
+
+write_csv(data0512, file = "data-clean/20230512.csv")
+```
