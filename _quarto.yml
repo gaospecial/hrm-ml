@@ -12,10 +12,12 @@ book:
   date: now
   chapters:
     - index.qmd
+    - single-species-modeling.qmd
     - data-preprocess.qmd
-    - modeling.qmd
-    - main.qmd
-    - evaluation.qmd
+    - model-selection.qmd
+    - two-species-modeling.qmd
+    - model-optimization.qmd
+    - method-evaluation.qmd
     - references.qmd
 
 bibliography: references.bib

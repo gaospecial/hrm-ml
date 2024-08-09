@@ -1,0 +1,207 @@
+# Model Optimization
+
+{{< include global-settings.qmd >}}
+
+
+```{r}
+# get metric with specified parameters
+rf_metric = function(train_data, 
+                     test_data, 
+                     y = "label_E", 
+                     X = starts_with("T"), 
+                     ...){
+  model = rand_forest(mode = "regression", trees = 1000) |> 
+    set_engine("ranger", importance = 'impurity', num.threads = 10)
+  train_data = train_data |> select(matches(y), X)
+  formula = as.formula(paste(y, ".", sep = "~"))
+  fit = workflow() |> 
+    add_recipe(recipe(formula, data = train_data)) |> 
+    add_model(model) |> 
+    fit(train_data)
+  prediction = augment(fit, new_data = test_data)
+  extra = enquos(...)
+  metric = prediction |> 
+    metrics(truth = y, estimate = .pred) |> 
+    mutate(!!!extra)
+  return(metric)
+}
+```
+
+## Data
+
+```{r}
+all_data = read_csv("data-clean/20230512.csv") |> 
+  filter(well_position %in% gradient_matrix_well)
+
+```
+
+
+## Size of training data
+
+```{r}
+#| cache: true
+mc_ml_data = all_data |> 
+  filter(cycle == 35,  rep %in% c(2, 3))
+data_split = initial_split(mc_ml_data)
+prop = rep(seq(0.05, 0.95, by = 0.05), each = 10)
+nums = prop * nrow(training(data_split)) |> round()
+
+prop_gradient_metric = lapply(seq_along(strain_label), function(i){
+  # strain label
+  strain = strain_label[[i]]
+  
+  # get train data
+  train = training(data_split)
+  test = testing(data_split)
+  
+  # fit random forest model
+  lapply(nums, function(x) rf_metric(sample_n(train,x), test, strain, n = x, strain = strain)) |> 
+    bind_rows()
+})  |> bind_rows()
+```
+
+
+```{r}
+# to plot metric
+plot_metric = function(data, x, y = ".estimate", metric = c('rmse','rsq','mae'), color = "black"){
+  metric = match.arg(metric)
+  ggplot(data, aes(.data[[x]], .data[[y]], color = I(color))) +
+    geom_point(shape = 21) +
+    geom_smooth(method = "loess") +
+    labs(x = x, y = metric)
+}
+```
+
+```{r}
+p_grad_metric = lapply(seq_along(strain_label), function(i){
+  lapply(c('rmse','rsq','mae'), function(m){
+    df = prop_gradient_metric |> 
+      dplyr::filter(strain == strain_label[[i]], `.metric` == m)
+    plot_metric(df, x = "n", metric = m, color = I(strain_color[[i]]))
+  })
+}) |> unlist(recursive = FALSE)
+
+plot_grid(plotlist = p_grad_metric, ncol = 3, nrow = 2, labels = "auto")
+```
+
+
+Use one experiment data to train, and the other experiment data to test.
+
+```{r}
+rep2 = read_csv("data-clean/20230512.csv") |> 
+  dplyr::filter(well_position %in% gradient_matrix_well,
+                rep == 2,
+                cycle == 30) |> 
+  dplyr::select(starts_with('label_'), starts_with('T')) |> 
+  mutate(label_E = log2(label_E), label_P = log2(label_P))
+
+rep3 = read_csv("data-clean/20230512.csv") |> 
+  dplyr::filter(well_position %in% gradient_matrix_well,
+                rep == 3,
+                cycle == 30) |> 
+  dplyr::select(starts_with('label_'), starts_with('T')) |> 
+  mutate(label_E = log2(label_E), label_P = log2(label_P))
+```
+
+```{r}
+rf_model_metric = function(train_data, truth, test_data = NULL, ...){
+  cols = colnames(train_data)
+  ycol = cols[str_detect(cols, "^T")]
+  rf_recipe = recipe(as.formula(paste(truth, '.', sep = '~')), data = train_data)
+  rf_spec = rand_forest(mode = "regression", trees = 1000) |> 
+    set_engine("ranger", importance = 'impurity', num.threads = 10)
+  rf_wflow = workflow()  |> 
+    add_recipe(rf_recipe)  |> 
+    add_model(rf_spec) 
+  
+  rf_fit = rf_wflow |> 
+    fit(train_data)
+  
+  prediction = augment(rf_fit, new_data = test_data)
+  
+  extra = list(...)
+  prediction |> 
+    metrics(truth = truth, estimate = .pred) |> 
+    mutate(!!!extra)
+}
+```
+
+```{r}
+#| cache: true
+rf_rep_metric = lapply(prop, function(p){
+  lapply(seq_along(strain_label), function(i){
+    data_split = initial_split(rep2, prop = p)
+    ylab = strain_label[[i]]
+    train = training(data_split) |> select(matches(ylab), starts_with("T"))
+    test = rep3 |> select(matches(ylab), starts_with("T"))
+    rf_model_metric(train, truth = ylab, test_data = test, prop = nrow(train), species = ylab)
+  }) |> bind_rows()
+}) |> bind_rows()
+```
+
+```{r}
+rf_rep_metric |> 
+  filter(.metric == "rsq") |> 
+  ggplot( aes(prop, `.estimate`, color = species)) +
+  geom_point(shape = 21) +
+  geom_smooth(se = FALSE) +
+  facet_wrap(~ species) +
+  scale_color_manual(values = strain_color) +
+  labs(x = "n", y = 'rsq') +
+  theme(legend.position = "none",
+        strip.background = element_blank(),
+        strip.text = element_blank())
+```
+
+## Thermo cycles
+
+```{r}
+thermo_cycle_metric = lapply(c(30, 35, 40), function(c){
+  mc_ml_data = all_data |> 
+    filter(cycle == c, rep == 2)
+  lapply(1:10, function(x){
+    data = initial_split(mc_ml_data)
+    results = lapply(seq_along(strain_label), function(i){
+      train = training(data)
+      test = testing(data)
+      strain = strain_label[[i]]
+      rf_metric(train, test, y = strain, cycle = c, strain = strain)
+    })
+    
+    bind_rows(results)
+  }) |> bind_rows()
+}) |> bind_rows()
+
+ggplot(thermo_cycle_metric, aes(factor(cycle), `.estimate`)) +
+  geom_boxplot(outliers = FALSE) +
+  geom_jitter() +
+  facet_wrap(~ strain + .metric, scales = "free")
+```
+
+## Temperature increment rate
+
+```{r}
+rate_metric = lapply(c(1, 2), function(r){
+  mc_ml_data = all_data |> 
+    filter(cycle == 30, rep == r)
+  lapply(1:10, function(x){
+    data = initial_split(mc_ml_data)
+    results = lapply(seq_along(strain_label), function(i){
+      train = training(data)
+      test = testing(data)
+      strain = strain_label[[i]]
+      rf_metric(train, test, y = strain, rate = r, strain = strain)
+    })
+    
+    bind_rows(results)
+  }) |> bind_rows()
+}) |> bind_rows()
+
+ggplot(rate_metric, aes(factor(rate), `.estimate`, color = strain)) +
+  geom_boxplot(outliers = FALSE) +
+  geom_jitter() +
+  facet_wrap(~ strain + .metric, scales = "free") +
+  scale_x_discrete(labels = c(0.015, 0.03)) +
+  scale_color_manual(values = strain_color) +
+  theme(legend.position = "none")
+```
