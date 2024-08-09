@@ -199,7 +199,7 @@ write_csv(data240617, "data-clean/20240617.csv")
 # data
 train_data = read_csv("data-clean/20230512.csv") |> 
   dplyr::filter(well_position %in% gradient_matrix_well,
-                cycle == 30) |> 
+                cycle == 30, rep == 1) |> 
   dplyr::select(starts_with('label_'), starts_with('T')) |> 
   mutate(label_E = log2(label_E), label_P = log2(label_P))
 

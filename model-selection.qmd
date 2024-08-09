@@ -118,7 +118,8 @@ class meltingCurveExperiment:
       cv: 整数，指定交叉验证的折数，默认为10。
       
     返回值:
-      results: 字典，包含每个模型的参数值，键为模型名称，值为参数值的字典，其中包含MSE、R^2、MAE等。
+      results: 字典，包含每个模型的参数值，键为模型名称，值为参数值的字典，
+               其中包含MSE、R^2、MAE等。
     """
     results = {}
     kf = KFold(n_splits=cv, shuffle=True, random_state=42)
@@ -150,9 +151,9 @@ class meltingCurveExperiment:
         mae_values.append(mae_fold)
         
         # 将结果存储在字典中
-        results[model_name] = {'RMSE': rmse_values, 
-        'R^2': r2_values, 
-        'MAE': mae_values}
+        results[model_name] = {'rmse': rmse_values, 
+        'rsq': r2_values, 
+        'mae': mae_values}
         self.results = results
             
                       
@@ -183,7 +184,7 @@ mc_ml_data = read_csv("data-clean/20230512.csv") |>
   select(starts_with('label_'), starts_with('T')) |> 
   mutate(label_E = log2(label_E), label_P = log2(label_P))
 
-write.csv(mc_ml_data, 'data-clean/story-mc-ml-data.csv')
+write.csv(mc_ml_data, 'data-clean/model-selection-data.csv')
 ```
 
 ## Evaluation
@@ -191,9 +192,9 @@ write.csv(mc_ml_data, 'data-clean/story-mc-ml-data.csv')
 We test different model in Python. 
 
 ```{python}
-exp = meltingCurveExperiment(file='data-clean/story-mc-ml-data.csv')
+exp = meltingCurveExperiment(file='data-clean/model-selection-data.csv')
 exp.cross_validate_regression_models(models=models)
-exp.results_to_df().to_csv('data-clean/story-mc-ml-metric.csv')
+exp.results_to_df().to_csv('data-clean/model-selection-metric.csv')
 ```
 
 Metric comparison revealed that ensemble machine learning methods, including Bagging, GradBoost and RandForest, have the best prediction performances [@fig-model-selection].
@@ -205,10 +206,9 @@ Metric comparison revealed that ensemble machine learning methods, including Bag
 model_ordered = paste('Linear,Lasso,Ridge,ElasticNet,SVM,GradBoost,AdaBoost',
                       'Bagging,K-Neighbors,Decision Tree,RandForest',
                       sep = "")  |> str_split_1(",")
-mc_ml_cv_metric = readr::read_csv('data-clean/story-mc-ml-metric.csv') |> 
+mc_ml_cv_metric = readr::read_csv('data-clean/model-selection-metric.csv') |> 
   dplyr::select(-1) |> 
   dplyr::mutate(model = factor(model, levels = model_ordered))
-ylab = c('RMSE' = 'rmse', 'R^2' = 'rsq', 'MAE' = 'mae')
 metrics = mc_ml_cv_metric$metric |> unique()
 
 p_mc_ml_cv_metric = lapply(metrics, function(x){
@@ -216,7 +216,7 @@ p_mc_ml_cv_metric = lapply(metrics, function(x){
     dplyr::filter(metric == x) |> 
     ggplot(aes(model, value)) +
     geom_boxplot() +
-    labs(x = NULL, y = ylab[[x]]) +
+    labs(x = NULL) +
     theme(axis.text.x = element_text(angle = 45, hjust = 1.1, vjust = 1.1))
 })
 

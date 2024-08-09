@@ -3,6 +3,14 @@
 {{< include global-settings.qmd >}}
 
 
+## Data
+
+```{r}
+all_data = read_csv("data-clean/20230512.csv") |> 
+  filter(well_position %in% gradient_matrix_well)
+```
+
+
 ```{r}
 # get metric with specified parameters
 rf_metric = function(train_data, 
@@ -27,21 +35,12 @@ rf_metric = function(train_data,
 }
 ```
 
-## Data
-
-```{r}
-all_data = read_csv("data-clean/20230512.csv") |> 
-  filter(well_position %in% gradient_matrix_well)
-
-```
-
-
 ## Size of training data
 
 ```{r}
 #| cache: true
 mc_ml_data = all_data |> 
-  filter(cycle == 35,  rep %in% c(2, 3))
+  filter(cycle == 30,  rep %in% c(2, 3))
 data_split = initial_split(mc_ml_data)
 prop = rep(seq(0.05, 0.95, by = 0.05), each = 10)
 nums = prop * nrow(training(data_split)) |> round()

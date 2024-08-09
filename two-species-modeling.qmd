@@ -101,24 +101,21 @@ ggplot(mc_df_matrix, aes(temperature, derivative, group = well_position)) +
 # data
 mc_ml_data = read_csv("data-clean/20230512.csv") |> 
   dplyr::filter(well_position %in% gradient_matrix_well,
-                rep == 1,
-                cycle == 30) |> 
-  dplyr::select(starts_with('label_'), starts_with('T')) |> 
+                cycle == 30, rep == 1) |> 
   mutate(label_E = log2(label_E), label_P = log2(label_P))
 
-data_split = initial_split(mc_ml_data)
-data_train = training(data_split)
-data_test = testing(data_split)
+data = initial_split(mc_ml_data)
+data_train = training(data)
+data_test = testing(data)
 ```
 
 ```{r}
-lm_spec = linear_reg()  |> set_engine('glm')
+lm_spec = linear_reg(engine = "lm")
 
 rf_spec = rand_forest(mode = "regression", trees = 1000) |> 
   set_engine("ranger", importance = 'impurity', num.threads = 10)
 
 plot_model_metric = function(predictions, model_metrics, truth_label, color){
-  metrics = yardstick::metric_set(rmse, rsq, mae)
   annotation = paste(model_metrics[['.metric']], 
                      format(round(model_metrics[['.estimate']], 2), digits = 2), 
                      sep = ": ", 
@@ -141,20 +138,18 @@ p_lm_predict = function(){
     recipe = recipe(as.formula(paste(strain_label[[i]], '.', sep = '~')), 
                     data = train)
     
-    rf_wflow = workflow()  |> 
-      add_recipe(recipe)  |> 
-      add_model(lm_spec) 
-    
-    rf_fit = rf_wflow |> 
+    fit = workflow() |> 
+      add_recipe(recipe) |> 
+      add_model(lm_spec) |> 
       fit(train)
     
-    prediction = augment(rf_fit, new_data = test)
+    prediction = augment(fit, new_data = test) 
     
     metric = prediction |> 
-      metrics(truth = strain_label[[i]], estimate = .pred)
+      metrics(truth = strain_label[[i]], estimate = .pred) 
     
     plot_model_metric(prediction, metric, strain_label[[i]], strain_color[[i]]) + 
-      labs(subtitle = 'Linear')
+      labs(subtitle = 'glm')
   })
 }
 
@@ -165,14 +160,12 @@ p_rf_predict = function(){
     recipe = recipe(as.formula(paste(strain_label[[i]], '.', sep = '~')), 
                     data = train)
     
-    rf_wflow = workflow()  |> 
+    fit = workflow()  |> 
       add_recipe(recipe)  |> 
-      add_model(rf_spec) 
-    
-    rf_fit = rf_wflow |> 
+      add_model(rf_spec) |> 
       fit(train)
     
-    prediction = augment(rf_fit, new_data = test)
+    prediction = augment(fit, new_data = test) 
     
     metric = prediction |> 
       metrics(truth = strain_label[[i]], estimate = .pred)
