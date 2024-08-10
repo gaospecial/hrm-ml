@@ -1,13 +1,21 @@
-# Evaluation of model performance
+# Method Evaluation
+
+Comparison of HRM-ML with two golden standards, strain-specific qPCR and 16S rRNA gene sequencing.
+
+{{< include global-settings.qmd >}}
+
+## Functions
 
 ```{r}
-library(dplyr)
-library(stringr)
-library(readr)
-library(tidyr)
-library(ggplot2)
-theme_set(theme_bw())
-options(width = 80)
+plot_syncom = function(data){
+  ggplot(data, aes(sample, quantity, fill = species)) +
+  geom_col() +
+  theme(legend.position = "top") +
+  scale_x_discrete(labels = function(x) {
+    x[seq(2, length(x), 2)] <- "" 
+    x
+  })
+}
 ```
 
 
@@ -24,12 +32,12 @@ fastq_files = list.files(path = dir, pattern = ".merged.fastq.gz",
 sample.names = dirname(fastq_files) |> basename()
 
 # filter and trim sequence
-filt_path = file.path("./data-raw/filtered")
-if(!dir.exists(filt_path)) dir.create(filt_path)
+filt_path = file.path("./data-raw/application-ngs")
+if (!dir.exists(filt_path)) dir.create(filt_path)
 
 library(dada2)
 
-for(i in seq_along(fastq_files)) {
+for (i in seq_along(fastq_files)) {
   fastq_filt = file.path(filt_path, basename(fastq_files[i]))
   filterAndTrim(fastq_files[i], fastq_filt, 
                 maxN = 0, maxEE = 2, truncQ = 2, rm.phix = TRUE,
@@ -44,11 +52,11 @@ library(dada2)
 ngs_path = "data-raw/application-ngs"
 
 # learn error
-err = learnErrors(ngs_path, multithread = TRUE)
+err = learnErrors(ngs_path, multithread = TRUE, verbose = FALSE)
 
 # denoise
 dadaFs = derepFastq(ngs_path) |> 
-  dada(err = err, multithread = TRUE, verbose = 0)
+  dada(err = err, multithread = TRUE)
 names(dadaFs) = gsub(".merged.fastq.gz", "", names(dadaFs))
 
 # build sequence table
@@ -91,10 +99,9 @@ colnames(tax_structure)[2:4] = c("ppu","eco","others")
 sequencing_result = tax_structure |> 
   pivot_longer(cols = -sample, names_to = "species", values_to = "quantity") |> 
   filter(species != 'others') |> 
-  mutate(method = 'ngs')
-ggplot(sequencing_result, aes(sample, quantity, fill = species)) +
-  geom_col() +
-  theme(legend.position = "top")
+  mutate(method = 'NGS')
+
+plot_syncom(sequencing_result)
 ```
 
 ## By strain-specific qPCR
@@ -112,10 +119,10 @@ result = read_quantstudio(xfun::magic_path("application-qPCR-result.txt")) |>
   mutate(ct = as.numeric(ct))
 
 # read plate layout
-plate = read_csv(xfun::magic_path("application-plate-layout.csv"))
+plate = read.csv(xfun::magic_path("application-plate-layout.csv"))
 
 # combine results and plate layout
-result = result |> left_join(plate)
+result = result |> left_join(plate, by = "well_position")
 ```
 
 ```{r}
@@ -127,7 +134,7 @@ std_quantity = tibble(
 std_sample = result |> 
   filter(target == 'std') |> 
   select(well_position, ct)  |> 
-  left_join(std_quantity) |> 
+  left_join(std_quantity, by = "well_position") |> 
   select(ct, log2quantity) |> 
   na.omit()
 ```
@@ -157,9 +164,7 @@ qPCR_result = unk_sample_predition |>
 ```
 
 ```{r}
-qPCR_result |> 
-  ggplot(aes(sample, quantity, fill = species)) +
-  geom_col()
+plot_syncom(qPCR_result)
 ```
 
 
@@ -167,18 +172,8 @@ qPCR_result |>
 
 
 ```{r}
-# global setting
-strain_label = c("label_E", "label_P")
-strain_name = c("EC","PP")
-strain_color = c("red3", "purple3")
-
-# well position
-gradient_matrix_well = paste0(rep(LETTERS[1:16],times=15),rep(7:22,each=16))
-```
-
-```{r}
 filename = xfun::magic_path("application-qPCR-result.txt")
-plate = read_csv(xfun::magic_path("application-plate-layout.csv"))
+plate = read.csv(xfun::magic_path("application-plate-layout.csv"))
 
 all = read_quantstudio(filename)
 sample = plate |> 
@@ -197,14 +192,14 @@ write_csv(data240617, "data-clean/20240617.csv")
 
 ```{r}
 # data
-train_data = read_csv("data-clean/20230512.csv") |> 
+train_data = read.csv("data-clean/20230512.csv") |> 
   dplyr::filter(well_position %in% gradient_matrix_well,
                 cycle == 30, rep == 1) |> 
   dplyr::select(starts_with('label_'), starts_with('T')) |> 
   mutate(label_E = log2(label_E), label_P = log2(label_P))
 
 # test data
-test_data = read_csv("data-clean/20240617.csv")
+test_data = read.csv("data-clean/20240617.csv")
 
 library(parsnip)
 library(recipes)
@@ -234,14 +229,17 @@ predictions = lapply(seq_along(strain_label), function(i){
 
 HRM_result = predictions |> 
   bind_rows() |> 
-  group_by(sample, label) |> 
-  summarise(.pred = mean(.pred)) |> 
+  summarise(.pred = mean(.pred), .by = c(sample, label)) |> 
   mutate(species = if_else(label == 'label_E', 'eco', 'ppu'),
          quantity = 2^.pred,
-         method = 'mc') |> 
+         method = 'HRM-ML') |> 
   select(sample, species, quantity, method)
-
 ```
+
+```{r}
+HRM_result |> plot_syncom()
+```
+
 
 ## Comparison
 
@@ -258,7 +256,11 @@ three_result = list(qPCR_result, sequencing_result, HRM_result) |>
 ggplot(three_result, aes(sample, prop, fill = species)) +
   geom_col() +
   facet_wrap(~method, ncol = 1) +
-  scale_y_continuous(labels = scales::percent)
+  scale_y_continuous(labels = scales::percent) +
+  scale_x_discrete(labels = function(x) {
+    x[seq(2, length(x), 2)] <- "" 
+    x
+  })
 ```
 
 
@@ -269,25 +271,23 @@ ec_prop = three_result |>
   pivot_wider(id_cols = sample, names_from = method, values_from = prop) |> 
   na.omit()
 
-cor(ec_prop |> select(-sample), method = "spearman")
+cor(ec_prop |> select(-sample))
 ```
 
 ```{r}
 ec_prop |> 
   rowwise() |> 
-  mutate(qPCR_vs_mc = mean(abs(qPCR - mc)),
-         qPCR_vs_ngs = -mean(abs(qPCR - ngs))) |> 
+  mutate(qPCR_vs_mc = mean(abs(qPCR - `HRM-ML`)),
+         qPCR_vs_ngs = -mean(abs(qPCR - NGS))) |> 
   pivot_longer(cols = starts_with('qPCR_vs'), names_to = 'comparison', values_to = 'abs_distance') |> 
   ggplot(ggplot2::aes(sample, abs_distance, fill = comparison)) +
   geom_col() +
-  theme(legend.position = c(0.3, 0.9))
+  scale_x_discrete(labels = function(x) {
+    x[seq(2, length(x), 2)] <- "" 
+    x
+  }) +
+  theme(legend.position = "inside",
+        legend.position.inside = c(0.3, 0.9))
 ```
 
 
-```{r}
-ggplot(ec_prop, ggplot2::aes(qPCR, mc)) +
-  geom_point()
-
-ggplot(ec_prop, ggplot2::aes(qPCR, ngs)) +
-  geom_point()
-```

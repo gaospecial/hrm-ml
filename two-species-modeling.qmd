@@ -11,7 +11,7 @@ The plate setting used in melting curve analysis is provided in a `csv` file. Or
 ```{r}
 # read plate setting
 plate_file = xfun::magic_path("modeling-plate-labels.csv")
-plate = read_csv(plate_file)
+plate = read.csv(plate_file)
 plate2 = plate |> 
   drop_na() |> 
   mutate(label_E = ifelse(label_E == 0, 1, ifelse(label_E == 16, 0, 1/2^label_E)),
@@ -72,10 +72,12 @@ mc = filterData(mc, from = 80, to = 90) |>
   transformData(step = 0.1)
 ```
 
+## Gradient Dilution Matrix
 
 ```{r}
 #| label: fig-mc-of-gradient-matrix
 #| fig-cap: Melting curves of gradient dilution matrix.
+#| fig-asp: 0.8
 mc_df = mc2tbl(mc)
 mc_df_matrix = mc_df |> 
   dplyr::filter(well_position %in% gradient_matrix_well) |> 
@@ -99,9 +101,9 @@ ggplot(mc_df_matrix, aes(temperature, derivative, group = well_position)) +
 
 ```{r}
 # data
-mc_ml_data = read_csv("data-clean/20230512.csv") |> 
+mc_ml_data = read.csv("data-clean/20230512.csv") |> 
   dplyr::filter(well_position %in% gradient_matrix_well,
-                cycle == 30, rep == 1) |> 
+                cycle == 30, rep == 2) |> 
   mutate(label_E = log2(label_E), label_P = log2(label_P))
 
 data = initial_split(mc_ml_data)
@@ -123,7 +125,9 @@ plot_model_metric = function(predictions, model_metrics, truth_label, color){
   ggplot(predictions, aes(.data[[truth_label]], `.pred`, color = I(color))) +
     geom_point(shape = 21) +
     geom_abline(slope = 1, linetype = 'dashed', color = color) +
-    geom_text(x = -Inf, y = Inf, color = I(color), label = annotation, hjust = -0.1, vjust = 1.1) +
+    annotate("text", x = -Inf, y = Inf, color = I(color), label = annotation, 
+             hjust = -0.1, vjust = 1.1) +
+    xlim(c(-16,0)) + ylim(c(-16, 0)) +
     labs(x = expression(log[2]*Q[true]), y = expression(log[2]*Q[pred]))
 }
 ```
@@ -131,69 +135,49 @@ plot_model_metric = function(predictions, model_metrics, truth_label, color){
 ```{r}
 #| fig-asp: 1
 #| fig-width: 5
-p_lm_predict = function(){
-  lapply(seq_along(strain_label), function(i){
-    train = data_train |> select(matches(strain_label[[i]]), starts_with("T"))
-    test = data_test  |> select(matches(strain_label[[i]]), starts_with("T"))
-    recipe = recipe(as.formula(paste(strain_label[[i]], '.', sep = '~')), 
-                    data = train)
-    
-    fit = workflow() |> 
-      add_recipe(recipe) |> 
-      add_model(lm_spec) |> 
-      fit(train)
-    
-    prediction = augment(fit, new_data = test) 
-    
-    metric = prediction |> 
-      metrics(truth = strain_label[[i]], estimate = .pred) 
-    
-    plot_model_metric(prediction, metric, strain_label[[i]], strain_color[[i]]) + 
-      labs(subtitle = 'glm')
-  })
-}
-
-p_rf_predict = function(){
-  lapply(seq_along(strain_label), function(i){
-    train = data_train |> select(matches(strain_label[[i]]), starts_with("T"))
-    test = data_test  |> select(matches(strain_label[[i]]), starts_with("T"))
-    recipe = recipe(as.formula(paste(strain_label[[i]], '.', sep = '~')), 
-                    data = train)
-    
-    fit = workflow()  |> 
-      add_recipe(recipe)  |> 
-      add_model(rf_spec) |> 
-      fit(train)
-    
-    prediction = augment(fit, new_data = test) 
-    
-    metric = prediction |> 
-      metrics(truth = strain_label[[i]], estimate = .pred)
-    
-    plot_model_metric(prediction, metric, strain_label[[i]], strain_color[[i]]) + 
-      labs(subtitle = 'RandForest')
-  })
-}
-
-plot_grid(plotlist = c(p_lm_predict(), p_rf_predict()), ncol = 2, labels = "auto")
-```
+p_lm_predict = lapply(seq_along(strain_label), function(i){
+  train = data_train |> select(matches(strain_label[[i]]), starts_with("T"))
+  test = data_test  |> select(matches(strain_label[[i]]), starts_with("T"))
+  recipe = recipe(as.formula(paste(strain_label[[i]], '.', sep = '~')), 
+                  data = train)
+  
+  fit = workflow() |> 
+    add_recipe(recipe) |> 
+    add_model(lm_spec) |> 
+    fit(train)
+  
+  prediction = augment(fit, new_data = test) 
+  
+  metric = prediction |> 
+    metrics(truth = strain_label[[i]], estimate = .pred) 
+  
+  plot_model_metric(prediction, metric, strain_label[[i]], strain_color[[i]]) + 
+    labs(subtitle = 'Linear')
+})
 
 
+p_rf_predict =  lapply(seq_along(strain_label), function(i){
+  train = data_train |> select(matches(strain_label[[i]]), starts_with("T"))
+  test = data_test  |> select(matches(strain_label[[i]]), starts_with("T"))
+  recipe = recipe(as.formula(paste(strain_label[[i]], '.', sep = '~')), 
+                  data = train)
+  
+  fit = workflow()  |> 
+    add_recipe(recipe)  |> 
+    add_model(rf_spec) |> 
+    fit(train)
+  
+  prediction = augment(fit, new_data = test) 
+  
+  metric = prediction |> 
+    metrics(truth = strain_label[[i]], estimate = .pred)
+  
+  plot_model_metric(prediction, metric, strain_label[[i]], strain_color[[i]]) + 
+    labs(subtitle = 'RandForest')
+})
 
-```{r}
-# data
-replicate = read_csv("data-clean/20230512.csv") |> 
-  dplyr::filter(well_position %in% gradient_matrix_well,
-                rep == 4,
-                cycle == 35) |> 
-  dplyr::select(starts_with('label_'), starts_with('T')) |> 
-  mutate(label_E = log2(label_E), label_P = log2(label_P))
 
-data_split = initial_split(replicate)
-data_train = training(data_split)
-data_test = testing(data_split)
-
-plot_grid(plotlist = c(p_lm_predict(), p_rf_predict()), ncol = 2, nrow = 2)
+plot_grid(plotlist = c(p_lm_predict, p_rf_predict), ncol = 2, labels = "auto")
 ```
 
 

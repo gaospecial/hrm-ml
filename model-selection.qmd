@@ -4,6 +4,19 @@ We test different models in Python.
 
 {{< include global-settings.qmd >}}
 
+                  
+## Data Preparation
+
+```{r}
+mc_ml_data = read.csv("data-clean/20230512.csv") |> 
+  filter(well_position %in% gradient_matrix_well,
+                rep == 1,
+                cycle == 30) |> 
+  select(starts_with('label_'), starts_with('T')) |> 
+  mutate(label_E = log2(label_E), label_P = log2(label_P))
+
+write.csv(mc_ml_data, 'data-clean/model-selection-data.csv')
+```
 
 ## Models
 
@@ -173,19 +186,7 @@ class meltingCurveExperiment:
     # return
     return(df)
 ```
-                        
-## Data Preparation
-
-```{r}
-mc_ml_data = read_csv("data-clean/20230512.csv") |> 
-  filter(well_position %in% gradient_matrix_well,
-                rep == 1,
-                cycle == 30) |> 
-  select(starts_with('label_'), starts_with('T')) |> 
-  mutate(label_E = log2(label_E), label_P = log2(label_P))
-
-write.csv(mc_ml_data, 'data-clean/model-selection-data.csv')
-```
+      
 
 ## Evaluation
 
@@ -194,7 +195,7 @@ We test different model in Python.
 ```{python}
 exp = meltingCurveExperiment(file='data-clean/model-selection-data.csv')
 exp.cross_validate_regression_models(models=models)
-exp.results_to_df().to_csv('data-clean/model-selection-metric.csv')
+exp.results_to_df().to_csv('data-clean/model-selection-metric.csv', index = False)
 ```
 
 Metric comparison revealed that ensemble machine learning methods, including Bagging, GradBoost and RandForest, have the best prediction performances [@fig-model-selection].
@@ -203,22 +204,23 @@ Metric comparison revealed that ensemble machine learning methods, including Bag
 ```{r}
 #| label: fig-model-selection
 #| fig-asp: 0.4
+#| fig-width: 7
+#| fig-cap: "Assessment of various machine learning algorisms in modeling and prediction with melting curve data."
 model_ordered = paste('Linear,Lasso,Ridge,ElasticNet,SVM,GradBoost,AdaBoost',
                       'Bagging,K-Neighbors,Decision Tree,RandForest',
-                      sep = "")  |> str_split_1(",")
-mc_ml_cv_metric = readr::read_csv('data-clean/model-selection-metric.csv') |> 
-  dplyr::select(-1) |> 
-  dplyr::mutate(model = factor(model, levels = model_ordered))
+                      sep = ",")  |> str_split_1(",")
+mc_ml_cv_metric = read.csv('data-clean/model-selection-metric.csv') |> 
+  mutate(model = factor(model, levels = model_ordered))
 metrics = mc_ml_cv_metric$metric |> unique()
 
 p_mc_ml_cv_metric = lapply(metrics, function(x){
   mc_ml_cv_metric |> 
-    dplyr::filter(metric == x) |> 
+    filter(metric == x) |> 
     ggplot(aes(model, value)) +
-    geom_boxplot() +
+    geom_boxplot(outliers = FALSE) +
     labs(x = NULL) +
     theme(axis.text.x = element_text(angle = 45, hjust = 1.1, vjust = 1.1))
 })
 
-plot_grid(plotlist = p_mc_ml_cv_metric, ncol = 3, nrow = 1)
+plot_grid(plotlist = p_mc_ml_cv_metric, ncol = 3, labels = "auto")
 ```

@@ -12,9 +12,9 @@ library(mcmodel)
 library(cowplot)
 
 # default theme
-theme_set(theme_bw()) +
-  theme(legend.key.size = unit(0.4,'cm'),
-        legend.key.height = unit(.4, 'cm'))
+theme_set(theme_bw() +
+            theme(legend.key.size = unit(0.4,'cm'),
+                  legend.key.height = unit(.4, 'cm')))
 
 # global setting
 strain_label = c("label_E", "label_P")
