@@ -4,29 +4,47 @@ This is a book created from markdown and executable code.
 
 See @knuth84 for additional discussion of literate programming.
 
+## Files
+
+The plate setting used in melting curve analysis is provided in a `csv` file. Original value for each column is the times of two-fold dilution, and we transform them into DNA quantity as related to the original concentration (assumed to be 1). 
+
+*Note*: a label value of `16` means not contain this species.
 
 ```{r}
-library(tidyverse, quietly = TRUE)
-library(mcmodel)
+library(dplyr)
 
+# experimental results
 files = list.files("data-raw/modeling-qPCR", pattern = ".txt", full.names = TRUE)
 
-plate = read_csv(xfun::magic_path("modeling-plate-labels.csv")) |> 
+# plate setting - layout
+plate = read.csv(xfun::magic_path("modeling-plate-labels.csv")) |> 
   mutate(label_E = ifelse(label_E == 0, 1, ifelse(label_E == 16, 0, 1/2^label_E)),
          label_P = ifelse(label_P == 0, 1, ifelse(label_P == 16, 0, 1/2^label_P)))
+```
 
+## Data Process By `mcmodel`
+
+Extract cycle and repeat from file names.
+
+```{r}
+library(stringr)
 get_cycle = function(filename){
-  if (str_detect(filename, "cycle30")) return(30)
-  if (str_detect(filename, "cycle35")) return(35)
-  if (str_detect(filename, "cycle40")) return(40)
-  stop("Error: no pattern found in filename.")
+  str_extract(filename, "cycle[0-9]")  |> 
+    str_remove("cycle")  |> 
+    as.numeric()
 }
 
 get_repeat = function(filename){
-  str_extract(filename, "experiment[1-5]")  |> 
+  str_extract(filename, "experiment[0-9]")  |> 
     str_remove("experiment")  |> 
     as.numeric()
 }
+```
+
+Read in melting curve and extract data from temperature 80 to 90 °C, transform raw signal to step 0.1 signal by interpolations.
+
+```{r}
+library(mcmodel)
 
 mc0512 = lapply(seq_along(files), function(i){
   filename = files[[i]]
@@ -38,10 +56,20 @@ mc0512 = lapply(seq_along(files), function(i){
     transformData(step = 0.1)
   return(mc)
 })
+```
 
+Transform `MeltingCurve` object to data frame.
+
+```{r}
 data0512 = lapply(mc0512, mc_tbl2wider) |> bind_rows()
 
 head(data0512)
+```
 
-write_csv(data0512, file = "data-clean/20230512.csv")
+## Save Modeling Data
+
+Save data frame to disk.
+
+```{r}
+write.csv(data0512, file = "data-clean/20230512.csv", row.names = FALSE)
 ```

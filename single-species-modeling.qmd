@@ -39,6 +39,7 @@ A 384-well PCR plate was divided into two parts. 1) the dilution of single speci
 ```{r}
 #| label: fig-well-conc-single-and-matrix
 #| fig-cap: Settings of a 384-well PCR plate.
+#| fig-width: 8
 p_concentration = lapply(seq_along(strain_label), function(i){
   plate2  |> 
     dplyr::filter(well_position %in% strain_single_well[[i]]) |> 
@@ -89,9 +90,7 @@ p_amp = lapply(seq_along(strain_label), function(i){
     ) +
     labs(color = expression(log[2]*Q), y = 'fluorescence') +
     theme(legend.position = "inside",
-          legend.position.inside = c(0.38,0.62),
-          legend.key.size = unit(0.4,'cm'),
-          legend.key.height = unit(.4, 'cm'))
+          legend.position.inside = c(0.38,0.62))
 })
 plot_grid(plotlist = p_amp, labels = "auto")
 ```
@@ -126,7 +125,7 @@ p_ct = lapply(seq_along(strain_label), function(i){
     labs(y = expression(log[2]*Q), x = 'Ct')
 })
 
-plot_grid(plotlist = p_ct)
+plot_grid(plotlist = p_ct, labels = "auto")
 ```
 
 ## Melting curve gradient
@@ -182,7 +181,7 @@ p_mc = lapply(seq_along(strain_label), function(i){
     ) 
 })
 
-plot_grid(plotlist = p_mc, ncol = 3, nrow = 2)
+plot_grid(plotlist = p_mc, ncol = 2, labels = "auto")
 ```
 
 
@@ -244,13 +243,17 @@ plots = lapply(peak_cols, function(x){
     theme(legend.position = "none")
 })
 
-plot_grid(plotlist = plots, align = 'hv', ncol = 3, nrow = 2)
+plot_grid(plotlist = plots, align = 'hv', ncol = 3, labels = "auto")
 ```
 
 ```{r}
 #| label: fig-mc-corrplot
+#| fig-cap: "Correlations of DNA quantity and peak-associated features extracted from single species melting curves."
+#| fig-subcap: 
+#|   - "*E. coli*"
+#|   - "*P. putida*"
 #| layout-ncol: 2
-#| fig-cap: Correlations of DNA quantity and peak-associated features extracted from single species melting curves. 
+
 library(corrplot)
 mono_mc_vars = mono_mc |> 
   dplyr::mutate(log2Q = log2(quantity)) |> 
@@ -289,7 +292,7 @@ p_peak_height = lapply(seq_along(strain_label), function(i){
          y = expression(log[2]*Q))
 })
 
-plot_grid(plotlist = p_peak_height, ncol = 3, nrow = 2)
+plot_grid(plotlist = p_peak_height, ncol = 2, labels = "auto")
 ```
 
 ```{r}
@@ -304,7 +307,7 @@ p_peak_area = lapply(seq_along(strain_label), function(i){
     labs(x = 'peak area', y = expression(log[2]*Q))
 })
 
-plot_grid(plotlist = p_peak_area, ncol = 3, nrow = 2)
+plot_grid(plotlist = p_peak_area, ncol = 2, labels = "auto")
 ```
 
 ## Comparision of Ct and MC modelling
@@ -333,6 +336,8 @@ model_metric = function(formula, data, ...){
 ```{r}
 #| label: fig-comparison-of-ct-and-mc-modelling
 #| fig-cap: Comparison of Ct and Mc linear modelling
+#| fig-asp: 1
+#| fig-width: 6
 
 plot_model_metric = function(model, test_data, color){
   predictions = augment(model, newdata = test_data)
@@ -347,7 +352,9 @@ plot_model_metric = function(model, test_data, color){
   ggplot(predictions, aes(`log2quantity`, `.fitted`, color = I(color))) +
     geom_point(shape = 21) +
     geom_abline(slope = 1, linetype = 'dashed', color = color) +
-    geom_text(x=-Inf, y=Inf, label = annotation, hjust = -0.1, vjust = 1.1) +
+    annotate("text", x = -Inf, y = Inf, label = annotation, 
+             color = I(color),
+             hjust = -0.1, vjust = 1.1) +
     coord_equal() +
     xlim(c(-16,0)) + ylim(c(-16, 0)) +
     labs(x = expression(log[2]*Q[true]), y = expression(log[2]*Q[pred]))
@@ -381,16 +388,20 @@ p_model_mc = lapply(seq_along(strain_label), function(i){
 
 
 
-plot_grid(plotlist = c(p_model_ct, p_model_mc), align = 'hv', ncol = 2, nrow = 2)
+plot_grid(plotlist = c(p_model_ct, p_model_mc), align = 'hv', labels = "auto")
 ```
 
 ## Combined results for single species
 
+
+
 ```{r}
 #| label: fig-linear-modelling-of-single-species
-#| fig-width: 12
+#| fig-width: 10
 #| fig-cap: Linear modelling and prediction of single species abundance with threshold cycle (Ct) and melting curve features in a two-species SynComs (red, *E. coli*. purple, *P. putida*. Same below). 
 plot_grid(plotlist = c(p_amp, p_mc, p_model_ct, p_model_mc), 
           align = 'hv', 
           ncol = 4, nrow = 2, labels = 'auto')
+
+ggsave("figures/figure1.jpg")
 ```

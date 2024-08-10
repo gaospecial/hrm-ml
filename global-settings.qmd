@@ -12,7 +12,9 @@ library(mcmodel)
 library(cowplot)
 
 # default theme
-theme_set(theme_bw())
+theme_set(theme_bw()) +
+  theme(legend.key.size = unit(0.4,'cm'),
+        legend.key.height = unit(.4, 'cm'))
 
 # global setting
 strain_label = c("label_E", "label_P")
@@ -25,4 +27,6 @@ pp_single_well = paste0(rep(LETTERS[1:16], times = 3), rep(4:6, each = 16))
 gradient_matrix_well = paste0(rep(LETTERS[1:16],times = 16), rep(7:22,each = 16))
 strain_single_well = list(EC = ec_single_well, PP = pp_single_well)
 
+# set seed
+set.seed(0)
 ```
