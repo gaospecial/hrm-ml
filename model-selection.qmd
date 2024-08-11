@@ -204,7 +204,7 @@ Metric comparison revealed that ensemble machine learning methods, including Bag
 ```{r}
 #| label: fig-model-selection
 #| fig-asp: 0.4
-#| fig-width: 7
+#| fig-width: 8
 #| fig-cap: "Assessment of various machine learning algorisms in modeling and prediction with melting curve data."
 model_ordered = paste('Linear,Lasso,Ridge,ElasticNet,SVM,GradBoost,AdaBoost',
                       'Bagging,K-Neighbors,Decision Tree,RandForest',
@@ -218,9 +218,11 @@ p_mc_ml_cv_metric = lapply(metrics, function(x){
     filter(metric == x) |> 
     ggplot(aes(model, value)) +
     geom_boxplot(outliers = FALSE) +
-    labs(x = NULL) +
+    labs(x = NULL, y = x) +
     theme(axis.text.x = element_text(angle = 45, hjust = 1.1, vjust = 1.1))
 })
 
 plot_grid(plotlist = p_mc_ml_cv_metric, ncol = 3, labels = "auto")
+
+ggsave(filename = "figures/figure3a.jpg")
 ```

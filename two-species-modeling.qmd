@@ -24,6 +24,7 @@ Layout of gradient dilution matrix [@fig-plate-layout-of-gradient-matrix].
 ```{r}
 #| label: fig-plate-layout-of-gradient-matrix
 #| fig-asp: 0.35
+#| fig-width: 7
 #| fig-cap: Layout of gradient dilution matrix.
 p_concentration = lapply(seq_along(strain_label), function(i){
   plot_384_single_concentration(plate2, strain_label[[i]], well_size = 1.5) + 
@@ -59,6 +60,8 @@ plot_grid(p_concentration[[1]],
           align = 'hv',
           ncol = 3,
           labels = "auto")
+
+ggsave(filename = "figures/figure2a.jpg")
 ```
 
 Melting curves of gradient dilution matrix [@fig-mc-of-gradient-matrix].
@@ -78,6 +81,7 @@ mc = filterData(mc, from = 80, to = 90) |>
 #| label: fig-mc-of-gradient-matrix
 #| fig-cap: Melting curves of gradient dilution matrix.
 #| fig-asp: 0.8
+#| fig-width: 7
 mc_df = mc2tbl(mc)
 mc_df_matrix = mc_df |> 
   dplyr::filter(well_position %in% gradient_matrix_well) |> 
@@ -94,6 +98,8 @@ ggplot(mc_df_matrix, aes(temperature, derivative, group = well_position)) +
         panel.spacing = unit(1, "pt"),
         axis.ticks = element_blank(),
         axis.text = element_blank(),)
+
+ggsave("figures/figure2c.jpg")
 ```
 
                                 
@@ -127,14 +133,15 @@ plot_model_metric = function(predictions, model_metrics, truth_label, color){
     geom_abline(slope = 1, linetype = 'dashed', color = color) +
     annotate("text", x = -Inf, y = Inf, color = I(color), label = annotation, 
              hjust = -0.1, vjust = 1.1) +
+    coord_equal() +
     xlim(c(-16,0)) + ylim(c(-16, 0)) +
     labs(x = expression(log[2]*Q[true]), y = expression(log[2]*Q[pred]))
 }
 ```
 
 ```{r}
-#| fig-asp: 1
-#| fig-width: 5
+#| fig-asp: 0.35
+#| fig-width: 8.5
 p_lm_predict = lapply(seq_along(strain_label), function(i){
   train = data_train |> select(matches(strain_label[[i]]), starts_with("T"))
   test = data_test  |> select(matches(strain_label[[i]]), starts_with("T"))
@@ -177,7 +184,9 @@ p_rf_predict =  lapply(seq_along(strain_label), function(i){
 })
 
 
-plot_grid(plotlist = c(p_lm_predict, p_rf_predict), ncol = 2, labels = "auto")
+plot_grid(plotlist = c(p_lm_predict, p_rf_predict), ncol = 4, labels = letters[4:7])
+
+ggsave(filename = "figures/figure3d.jpg")
 ```
 
 

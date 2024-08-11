@@ -147,7 +147,7 @@ plot_mc_single = function(mc, label_color, vline_color){
   df = mc2tbl(mc) |> 
     select(-date, -primer) |> 
     summarize(derivative = median(derivative), 
-              .by = c("temperature", label_color, "temperature"))
+              .by = all_of(c("temperature", label_color)))
   
   # plot mc
   ggplot(df, 
@@ -394,7 +394,7 @@ plot_grid(plotlist = c(p_model_ct, p_model_mc), align = 'hv', labels = "auto")
 
 ```{r}
 #| label: fig-linear-modelling-of-single-species
-#| fig-width: 10
+#| fig-width: 9.5
 #| fig-cap: Linear modelling and prediction of single species abundance with threshold cycle (Ct) and melting curve features in a two-species SynComs (red, *E. coli*. purple, *P. putida*. Same below). 
 plot_grid(plotlist = c(p_amp, p_mc, p_model_ct, p_model_mc), 
           align = 'hv', 

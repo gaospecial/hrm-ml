@@ -253,7 +253,7 @@ three_result = list(qPCR_result, sequencing_result, HRM_result) |>
 ```
 
 ```{r}
-ggplot(three_result, aes(sample, prop, fill = species)) +
+p_prop = ggplot(three_result, aes(sample, prop, fill = species)) +
   geom_col() +
   facet_wrap(~method, ncol = 1) +
   scale_y_continuous(labels = scales::percent) +
@@ -262,7 +262,10 @@ ggplot(three_result, aes(sample, prop, fill = species)) +
     x
   }) +
   scale_fill_manual(values = strain_color) +
+  labs(x = NULL, y = "proportion") +
   theme(legend.position = "none")
+
+p_prop
 ```
 
 
@@ -291,7 +294,7 @@ ec_prop_difference |> summarise(average = mean(abs(abs_distance)), .by = compari
 
 
 ```{r}
-ec_prop_difference |>
+p_diff = ec_prop_difference |>
   ggplot(ggplot2::aes(sample, abs_distance, fill = comparison)) +
   geom_col() +
   scale_x_discrete(labels = function(x) {
@@ -299,14 +302,26 @@ ec_prop_difference |>
     x
   }) +
   annotate("label", x = -Inf, y = Inf, 
-           label = "qPCR vs HRM-ML", 
-           hjust = -0.1, vjust = 1.5, label.size = NA) +
+           label = "HRM-ML vs qPCR", 
+           hjust = -0.1, vjust = 1.5, label.size = NA,
+           color = "#1B9E77") +
   annotate("label", x = -Inf, y = -Inf, 
-           label = "qPCR vs NGS", 
-           hjust = -0.1, vjust = -0.5, label.size = NA) +
+           label = "NGS vs qPCR", 
+           hjust = -0.1, vjust = -0.5, label.size = NA,
+           color = "#D95F02") +
   labs(y = "absolute difference") +
-  scale_y_continuous(labels = function(x) abs(x)) +
+  scale_y_continuous(labels = function(x) scales::percent(abs(x))) +
+  scale_fill_manual(values = c("#1B9E77", "#D95F02")) +
   theme(legend.position = "none")
+
+p_diff
 ```
 
+```{r}
+#| fig-asp: 0.9
+plot_grid(p_prop, p_diff, align = "v", ncol = 1, 
+          rel_heights = c(2, 1), 
+          labels = "auto")
+ggsave("figures/figure5.jpg")
+```
 
