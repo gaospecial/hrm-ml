@@ -260,7 +260,9 @@ ggplot(three_result, aes(sample, prop, fill = species)) +
   scale_x_discrete(labels = function(x) {
     x[seq(2, length(x), 2)] <- "" 
     x
-  })
+  }) +
+  scale_fill_manual(values = strain_color) +
+  theme(legend.position = "none")
 ```
 
 
@@ -271,23 +273,40 @@ ec_prop = three_result |>
   pivot_wider(id_cols = sample, names_from = method, values_from = prop) |> 
   na.omit()
 
-cor(ec_prop |> select(-sample))
+cor(ec_prop |> select(-sample), method = "spearman")
 ```
 
 ```{r}
-ec_prop |> 
+ec_prop_difference = ec_prop |> 
   rowwise() |> 
   mutate(qPCR_vs_mc = mean(abs(qPCR - `HRM-ML`)),
          qPCR_vs_ngs = -mean(abs(qPCR - NGS))) |> 
-  pivot_longer(cols = starts_with('qPCR_vs'), names_to = 'comparison', values_to = 'abs_distance') |> 
+  pivot_longer(cols = starts_with('qPCR_vs'), 
+               names_to = 'comparison', 
+               values_to = 'abs_distance')
+
+# mean absolute differences
+ec_prop_difference |> summarise(average = mean(abs(abs_distance)), .by = comparison)
+```
+
+
+```{r}
+ec_prop_difference |>
   ggplot(ggplot2::aes(sample, abs_distance, fill = comparison)) +
   geom_col() +
   scale_x_discrete(labels = function(x) {
     x[seq(2, length(x), 2)] <- "" 
     x
   }) +
-  theme(legend.position = "inside",
-        legend.position.inside = c(0.3, 0.9))
+  annotate("label", x = -Inf, y = Inf, 
+           label = "qPCR vs HRM-ML", 
+           hjust = -0.1, vjust = 1.5, label.size = NA) +
+  annotate("label", x = -Inf, y = -Inf, 
+           label = "qPCR vs NGS", 
+           hjust = -0.1, vjust = -0.5, label.size = NA) +
+  labs(y = "absolute difference") +
+  scale_y_continuous(labels = function(x) abs(x)) +
+  theme(legend.position = "none")
 ```
 
 
