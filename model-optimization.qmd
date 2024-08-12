@@ -65,7 +65,7 @@ rep3 = all_data |>
 Using different size of training data to fit and evaluate the prediction result of same test data.
 
 ```{r}
-prop = rep(seq(0.05, 1, by = 0.05), each = 10) 
+prop = rep(seq(0.05, 0.95, by = 0.05), each = 10) 
 rf_rep_metric = lapply(prop, function(p){
   lapply(seq_along(strain_label), function(i){
     data_split = initial_split(rep2, prop = p)
