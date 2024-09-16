@@ -72,6 +72,7 @@ silva_train_set = "~/Projects/Silva/silva_nr99_v138.1_train_set.fa.gz"
 taxa = assignTaxonomy(seqtab.nochim, silva_train_set, multithread = TRUE)
 ```
 
+To use Silva database in `assignTaxonomy()`, you should download it at <https://benjjneb.github.io/dada2/training.html>.
 
 ```{r}
 # build phyloseq object
