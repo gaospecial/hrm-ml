@@ -79,6 +79,13 @@ To use Silva database in `assignTaxonomy()`, you should download it at <https://
 library(phyloseq)
 ps = phyloseq(otu_table(seqtab.nochim, taxa_are_rows = FALSE), tax_table(taxa))
 
+# plot community
+plot_bar(ps, fill = "Genus") +
+  theme(legend.position = "top")
+```
+
+
+```{r}
 # merge low abundant noise
 taxa_sums = taxa_sums(ps)
 threshold = 0.001 * sum(taxa_sums) # threshold is 0.1%
